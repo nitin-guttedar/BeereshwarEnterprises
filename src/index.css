@@ -1,0 +1,110 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --color-bg: #F8FAFC;
+    --color-surface: #FFFFFF;
+    --color-border: #E2E8F0;
+    --color-text: #0F172A;
+  }
+
+  .dark {
+    --color-bg: #070B14;
+    --color-surface: #0D1527;
+    --color-border: #1F2E4D;
+    --color-text: #F1F5F9;
+  }
+
+  body {
+    background-color: var(--color-bg);
+    color: var(--color-text);
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: #0D1527;
+  }
+  .dark ::-webkit-scrollbar-track {
+    background: #0D1527;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #3B82F6;
+    border-radius: 4px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #F59E0B;
+  }
+}
+
+@layer utilities {
+  /* Dual-mode glass panel */
+  .glass-panel {
+    background: rgba(255, 255, 255, 0.9);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(226, 232, 240, 0.8);
+    box-shadow: 0 4px 24px -2px rgba(10, 37, 64, 0.06);
+  }
+
+  .dark .glass-panel {
+    background: rgba(13, 21, 39, 0.75);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5);
+  }
+
+  .glass-panel-hover {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .glass-panel-hover:hover {
+    border-color: rgba(30, 64, 175, 0.4);
+    box-shadow: 0 12px 32px -8px rgba(15, 76, 129, 0.15);
+  }
+  .dark .glass-panel-hover:hover {
+    background: rgba(23, 34, 59, 0.85);
+    border-color: rgba(245, 158, 11, 0.4);
+    box-shadow: 0 12px 32px -8px rgba(0, 0, 0, 0.6), 0 0 20px -2px rgba(245, 158, 11, 0.15);
+  }
+
+  /* SBE Brand Gradients */
+  .text-gradient-sbe {
+    background: linear-gradient(135deg, #0F4C81 0%, #1E40AF 50%, #2563EB 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .dark .text-gradient-sbe {
+    background: linear-gradient(135deg, #93C5FD 0%, #60A5FA 50%, #F59E0B 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .text-gradient-amber {
+    background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .dark .text-gradient-amber {
+    background: linear-gradient(135deg, #FDE68A 0%, #F59E0B 50%, #D97706 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .bg-sbe-gradient {
+    background: linear-gradient(135deg, #0B2A4A 0%, #0F4C81 100%);
+  }
+
+  .border-sbe-subtle {
+    border-color: rgba(226, 232, 240, 1);
+  }
+  .dark .border-sbe-subtle {
+    border-color: rgba(255, 255, 255, 0.1);
+  }
+}
