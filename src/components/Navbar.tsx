@@ -250,7 +250,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 className="flex items-center gap-2 px-3 py-2 rounded-xl bg-blue-50 dark:bg-industrial-800 border border-blue-200 dark:border-white/10 text-xs font-mono text-sbe-royal dark:text-sbe-gold font-bold"
               >
                 <Shield className="w-3.5 h-3.5" />
-                <span>{userRole === 'admin' ? 'Pavan Malaiah (Admin)' : 'Client HR (TVS)'}</span>
+                <span>{userRole === 'admin' ? `${authSession.name} (Admin)` : `${authSession.company || authSession.name} (Client HR)`}</span>
               </button>
 
               <button
@@ -267,7 +267,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-sbe-royal hover:bg-blue-700 text-white font-bold text-xs shadow-md shadow-blue-500/20 transition-all"
             >
               <Lock className="w-3.5 h-3.5" />
-              <span>Admin Login</span>
+              <span>Portal Sign In</span>
             </button>
           )}
         </div>
@@ -363,7 +363,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             {authSession ? (
               <div className="flex items-center justify-between p-3 rounded-xl bg-blue-50 dark:bg-industrial-900">
                 <span className="text-xs font-mono font-bold text-sbe-royal dark:text-sbe-gold truncate">
-                  {userRole === 'admin' ? 'Pavan Malaiah (Admin)' : 'Client HR (TVS)'}
+                  {userRole === 'admin' ? `${authSession.name} (Admin)` : `${authSession.company || authSession.name} (Client HR)`}
                 </span>
                 <button
                   onClick={onLogout}

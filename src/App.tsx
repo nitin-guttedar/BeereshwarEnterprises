@@ -133,6 +133,8 @@ export function App() {
             userRole={userRole}
             setUserRole={setUserRole}
             setCurrentTab={handleTabChange}
+            authSession={authSession}
+            onOpenLoginModal={() => setIsLoginModalOpen(true)}
           />
         )}
         {currentTab === 'blog' && <BlogPage />}

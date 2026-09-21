@@ -49,7 +49,7 @@ const generateStrongPassword = (length = 16) => {
 
 interface AdminPortalProps {
   userRole: 'public' | 'client_hr' | 'admin';
-  setUserRole: (role: 'public' | 'client_hr' | 'admin') => void;
+  setUserRole?: (role: 'public' | 'client_hr' | 'admin') => void;
   setCurrentTab: (tab: string) => void;
   authSession: { name: string; email: string; company?: string } | null;
   onLogout: () => void;
@@ -58,7 +58,6 @@ interface AdminPortalProps {
 
 export const AdminPortal: React.FC<AdminPortalProps> = ({
   userRole,
-  setUserRole,
   authSession,
   onLogout,
   onOpenLoginModal,
@@ -423,19 +422,26 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-bold font-display text-slate-900 dark:text-white">
-                  Shree Beereshwara Enterprises (SBE)
+                  {userRole === 'admin' ? 'SBE Central Administrator Console' : `${authSession.company || 'Client Facility'} – HR Portal`}
                 </h1>
-                <span className="text-xs font-mono font-bold px-2.5 py-0.5 rounded bg-blue-100 dark:bg-sbe-royal/40 text-sbe-royal dark:text-sbe-gold border border-blue-200 dark:border-sbe-gold/40 uppercase">
-                  {userRole.replace('_', ' ')}
+                <span className={`text-xs font-mono font-bold px-2.5 py-0.5 rounded border uppercase ${
+                  userRole === 'admin'
+                    ? 'bg-blue-100 dark:bg-sbe-royal/40 text-sbe-royal dark:text-sbe-gold border-blue-200 dark:border-sbe-gold/40'
+                    : 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800/60'
+                }`}>
+                  {userRole === 'admin' ? 'Agency Admin' : 'Client HR'}
                 </span>
               </div>
               <p className="text-xs text-slate-500 dark:text-slate-400 font-mono mt-0.5">
                 Authenticated: <strong className="text-slate-800 dark:text-slate-200">{authSession.name}</strong> ({authSession.email})
+                {userRole === 'client_hr' && authSession.company && (
+                  <span> • Plant: <strong className="text-emerald-600 dark:text-emerald-400">{authSession.company}</strong></span>
+                )}
               </p>
             </div>
           </div>
 
-          {/* Sync Data, Role Switcher & Logout */}
+          {/* Sync Data, Authenticated Badge & Logout */}
           <div className="flex items-center gap-2 flex-wrap">
             <button
               onClick={handleRefreshData}
@@ -447,27 +453,19 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               <span>{isSyncing ? 'Syncing...' : 'Sync Backend'}</span>
             </button>
 
-            <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-industrial-900 p-1.5 rounded-xl border border-slate-200 dark:border-white/10 text-xs font-mono">
-              <button
-                onClick={() => setUserRole('admin')}
-                className={`px-3 py-1.5 rounded-lg transition-all ${
-                  userRole === 'admin'
-                    ? 'bg-sbe-royal text-white font-bold shadow'
-                    : 'text-slate-600 dark:text-slate-400'
-                }`}
-              >
-                Admin
-              </button>
-              <button
-                onClick={() => setUserRole('client_hr')}
-                className={`px-3 py-1.5 rounded-lg transition-all ${
-                  userRole === 'client_hr'
-                    ? 'bg-sbe-royal text-white font-bold shadow'
-                    : 'text-slate-600 dark:text-slate-400'
-                }`}
-              >
-                Client HR
-              </button>
+            {/* Authenticated Role Tag (Strict Role Isolation - No Switcher) */}
+            <div className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 dark:bg-industrial-900 border border-slate-200 dark:border-white/10 text-xs font-mono">
+              {userRole === 'admin' ? (
+                <span className="flex items-center gap-1.5 text-sbe-royal dark:text-sbe-gold font-bold">
+                  <Shield className="w-3.5 h-3.5" />
+                  <span>Admin Access</span>
+                </span>
+              ) : (
+                <span className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 font-bold">
+                  <Building2 className="w-3.5 h-3.5" />
+                  <span>{authSession.company || 'Client HR'}</span>
+                </span>
+              )}
             </div>
 
             <button

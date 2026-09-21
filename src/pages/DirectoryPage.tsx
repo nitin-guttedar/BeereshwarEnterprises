@@ -17,13 +17,16 @@ import { Skeleton, EmployeeCardSkeleton } from '../components/Skeleton';
 
 interface DirectoryPageProps {
   userRole: 'public' | 'client_hr' | 'admin';
-  setUserRole: (role: 'public' | 'client_hr' | 'admin') => void;
+  setUserRole?: (role: 'public' | 'client_hr' | 'admin') => void;
   setCurrentTab: (tab: string) => void;
+  authSession?: { name: string; email: string; company?: string } | null;
+  onOpenLoginModal?: () => void;
 }
 
 export const DirectoryPage: React.FC<DirectoryPageProps> = ({
   userRole,
-  setUserRole,
+  authSession,
+  onOpenLoginModal,
 }) => {
   const [employees, setEmployees] = useState<EmployeeRecord[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -152,7 +155,7 @@ export const DirectoryPage: React.FC<DirectoryPageProps> = ({
             </p>
           </div>
 
-          {/* Authentication Badge & One-Click Demo Mode Toggle */}
+          {/* Authentication Badge */}
           <div className="p-4 rounded-2xl bg-white dark:bg-industrial-900/90 border border-slate-200 dark:border-white/10 flex items-center gap-4 shrink-0 shadow-sm">
             <div className="space-y-0.5 text-xs font-mono">
               <div className="flex items-center gap-1.5">
@@ -163,7 +166,9 @@ export const DirectoryPage: React.FC<DirectoryPageProps> = ({
                 )}
                 <span className="text-slate-600 dark:text-slate-300">Access Mode:</span>
                 <strong className={isAuthenticated ? 'text-emerald-600 dark:text-emerald-400 uppercase' : 'text-sbe-royal dark:text-sbe-gold uppercase'}>
-                  {isAuthenticated ? `${userRole.replace('_', ' ')} (UNMASKED)` : 'PUBLIC (MASKED)'}
+                  {isAuthenticated
+                    ? `${userRole === 'admin' ? 'ADMIN' : `CLIENT HR (${authSession?.company || 'AUTHORIZED'})`} (UNMASKED)`
+                    : 'PUBLIC (MASKED)'}
                 </strong>
               </div>
               <p className="text-[11px] text-slate-500 dark:text-slate-400">
@@ -173,16 +178,14 @@ export const DirectoryPage: React.FC<DirectoryPageProps> = ({
               </p>
             </div>
 
-            <button
-              onClick={() => setUserRole(isAuthenticated ? 'public' : 'client_hr')}
-              className={`px-4 py-2 rounded-xl text-xs font-bold font-mono transition-all shadow-sm ${
-                isAuthenticated
-                  ? 'bg-slate-100 dark:bg-industrial-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200'
-                  : 'bg-sbe-royal hover:bg-blue-700 text-white'
-              }`}
-            >
-              {isAuthenticated ? 'Switch to Masked Public' : 'Login as Client HR'}
-            </button>
+            {!isAuthenticated && onOpenLoginModal && (
+              <button
+                onClick={onOpenLoginModal}
+                className="px-4 py-2 rounded-xl text-xs font-bold font-mono transition-all shadow-sm bg-sbe-royal hover:bg-blue-700 text-white"
+              >
+                Sign In to Unmask
+              </button>
+            )}
           </div>
         </div>
       </section>
