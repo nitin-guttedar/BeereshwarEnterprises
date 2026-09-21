@@ -23,7 +23,7 @@ export const ManpowerCalculator: React.FC<ManpowerCalculatorProps> = ({ onSucces
   const estimatedDailyTotal = workersCount * baseRatePerWorkerShift * (shiftMultiplier === 3 ? 1.05 : 1);
   const estimatedMonthlyTotal = estimatedDailyTotal * 26;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!companyName || !phone || !contactName) {
       alert('Please fill out company name, contact person, and phone number.');
@@ -39,6 +39,23 @@ export const ManpowerCalculator: React.FC<ManpowerCalculatorProps> = ({ onSucces
         origin: { y: 0.7 }
       });
     } catch (err) {}
+
+    try {
+      const { submitProposal } = await import('../services/api');
+      await submitProposal({
+        companyName,
+        contactName,
+        phone,
+        location,
+        industry,
+        manpowerCount: workersCount,
+        roleRequirement: `Calculated Requisition (${industry})`,
+        shiftsRequired: shiftRequirement,
+        notes: `Contract Duration: ${duration} | Estimated Monthly: ₹${estimatedMonthlyTotal.toLocaleString('en-IN')}`,
+      });
+    } catch (err) {
+      console.error('Failed to sync calculator requisition with backend:', err);
+    }
 
     if (onSuccessSubmit) {
       onSuccessSubmit({

@@ -1,7 +1,20 @@
-import React, { useState } from 'react';
-import { EmployeeRecord, INITIAL_EMPLOYEES, getWorkforceStats } from '../../data/employees';
-import { CLIENTS_DATA, ClientCompany } from '../../data/clients';
+import React, { useState, useEffect } from 'react';
+import { EmployeeRecord, getWorkforceStats } from '../../data/employees';
+import { ClientCompany } from '../../data/clients';
 import { COMPANY_DETAILS } from '../../data/company';
+import { 
+  fetchClients, 
+  createClient, 
+  updateClient, 
+  deleteClient, 
+  regenerateClientPassword,
+  fetchEmployees, 
+  createEmployee, 
+  updateEmployee, 
+  deleteEmployee,
+  fetchAttendance, 
+  toggleAttendance as apiToggleAttendance 
+} from '../../services/api';
 import { 
   Shield, 
   Users, 
@@ -21,7 +34,8 @@ import {
   KeyRound,
   Copy,
   RefreshCw,
-  Key
+  Key,
+  Loader2
 } from 'lucide-react';
 
 interface AdminPortalProps {
@@ -41,18 +55,19 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   onOpenLoginModal,
 }) => {
   const [activeAdminTab, setActiveAdminTab] = useState<'dashboard' | 'employees' | 'clients' | 'attendance' | 'reports'>('dashboard');
-  const [employees, setEmployees] = useState<EmployeeRecord[]>(INITIAL_EMPLOYEES);
-  const [clients, setClients] = useState<ClientCompany[]>(CLIENTS_DATA);
+  const [employees, setEmployees] = useState<EmployeeRecord[]>([]);
+  const [clients, setClients] = useState<ClientCompany[]>([]);
   const [employeeSearch, setEmployeeSearch] = useState('');
+  const [isLoadingData, setIsLoadingData] = useState(false);
 
   // Add Employee Modal State
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [newEmployee, setNewEmployee] = useState<Partial<EmployeeRecord>>({
     name: '',
     role: 'Assembly Line Operator',
-    nativeState: 'Uttar Pradesh',
-    nativeDistrict: '',
-    clientCompany: 'TVS Motor Supplier / Two-Wheeler Assembly',
+    nativeState: 'Karnataka',
+    nativeDistrict: 'Mysore',
+    clientCompany: 'Thandavpura Base Camp',
     clientLocation: 'Kadakola Belt, Mysore',
     shift: 'Shift A (06:00 - 14:00)',
     phone: '+91 9',
@@ -92,20 +107,32 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   });
 
   // Attendance simulation state
-  const [attendanceRecords, setAttendanceRecords] = useState<{ [id: string]: 'Present' | 'Absent' | 'Shift Swapped' }>({
-    'BE-0101': 'Present',
-    'BE-0102': 'Present',
-    'BE-0103': 'Present',
-    'BE-0104': 'Present',
-    'BE-0105': 'Present',
-    'BE-0106': 'Present',
-    'BE-0107': 'Present',
-    'BE-0108': 'Shift Swapped',
-    'BE-0109': 'Present',
-    'BE-0110': 'Absent',
-    'BE-0111': 'Present',
-    'BE-0112': 'Present',
-  });
+  const [attendanceRecords, setAttendanceRecords] = useState<{ [id: string]: 'Present' | 'Absent' | 'Shift Swapped' }>({});
+
+  // Load data from backend on login or refresh
+  const loadData = async () => {
+    setIsLoadingData(true);
+    try {
+      const [clientsData, employeesData, attendanceData] = await Promise.all([
+        fetchClients().catch(() => []),
+        fetchEmployees().catch(() => []),
+        fetchAttendance().catch(() => ({})),
+      ]);
+      setClients(clientsData || []);
+      setEmployees(employeesData || []);
+      setAttendanceRecords(attendanceData || {});
+    } catch (err) {
+      console.error('Failed to load data from backend:', err);
+    } finally {
+      setIsLoadingData(false);
+    }
+  };
+
+  useEffect(() => {
+    if (authSession) {
+      loadData();
+    }
+  }, [authSession]);
 
   // If not authenticated, require login!
   if (!authSession) {
@@ -137,7 +164,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
 
   // Client HR can only see their assigned company (e.g. TVS Motor)
   const isClientHR = userRole === 'client_hr';
-  const clientHRCompany = 'TVS Motor Supplier / Two-Wheeler Assembly';
+  const clientHRCompany = authSession?.company || 'TVS Motor Supplier / Two-Wheeler Assembly';
 
   const visibleEmployees = isClientHR
     ? employees.filter((e) => e.clientCompany === clientHRCompany)
@@ -150,38 +177,54 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       e.role.toLowerCase().includes(employeeSearch.toLowerCase())
   );
 
-  const handleAddEmployee = (e: React.FormEvent) => {
+  const handleAddEmployee = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newEmployee.name || !newEmployee.phone) {
       alert('Please fill out employee name and phone number.');
       return;
     }
 
-    const nextIdNum = employees.length + 101;
-    const created: EmployeeRecord = {
-      id: `BE-0${nextIdNum}`,
-      name: newEmployee.name || 'Worker Name',
-      photo: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
-      role: (newEmployee.role as any) || 'Machine Helper',
-      nativeState: (newEmployee.nativeState as any) || 'Uttar Pradesh',
-      nativeDistrict: newEmployee.nativeDistrict || 'Varanasi',
-      clientCompany: newEmployee.clientCompany || 'Thandavpura Base Camp',
-      clientLocation: newEmployee.clientLocation || 'Mysore',
-      shift: (newEmployee.shift as any) || 'Shift A (06:00 - 14:00)',
-      joiningDate: new Date().toISOString().slice(0, 10),
-      status: (newEmployee.status as any) || 'Active',
-      phone: newEmployee.phone || '+91 94801 00000',
-      aadhaarVerified: !!newEmployee.aadhaarVerified,
-      medicalFitnessValid: !!newEmployee.medicalFitnessValid,
-      supervisorName: newEmployee.supervisorName || 'Site Supervisor',
-      experienceYears: Number(newEmployee.experienceYears) || 1,
-    };
+    try {
+      const created = await createEmployee({
+        name: newEmployee.name,
+        role: newEmployee.role || 'Machine Helper',
+        nativeState: newEmployee.nativeState || 'Karnataka',
+        nativeDistrict: newEmployee.nativeDistrict || 'Mysore',
+        clientCompany: newEmployee.clientCompany || (clients[0]?.name || 'Base Camp / Pool'),
+        clientLocation: newEmployee.clientLocation || 'Mysore',
+        shift: newEmployee.shift || 'Shift A (06:00 - 14:00)',
+        status: newEmployee.status || 'Active',
+        phone: newEmployee.phone,
+        aadhaarVerified: !!newEmployee.aadhaarVerified,
+        medicalFitnessValid: !!newEmployee.medicalFitnessValid,
+        supervisorName: newEmployee.supervisorName || 'Site Supervisor',
+        experienceYears: Number(newEmployee.experienceYears) || 1,
+      });
 
-    setEmployees([created, ...employees]);
-    setIsAddModalOpen(false);
+      setEmployees([created, ...employees]);
+      setAttendanceRecords(prev => ({ ...prev, [created.id]: 'Present' }));
+      setIsAddModalOpen(false);
+      setNewEmployee({
+        name: '',
+        role: 'Assembly Line Operator',
+        nativeState: 'Karnataka',
+        nativeDistrict: 'Mysore',
+        clientCompany: clients[0]?.name || 'Base Camp / Pool',
+        clientLocation: 'Kadakola Belt, Mysore',
+        shift: 'Shift A (06:00 - 14:00)',
+        phone: '+91 9',
+        status: 'Active',
+        experienceYears: 2,
+        aadhaarVerified: true,
+        medicalFitnessValid: true,
+        supervisorName: 'M. Ramesh',
+      });
+    } catch (err: any) {
+      alert('Failed to enroll worker: ' + err.message);
+    }
   };
 
-  const handleAddClient = (e: React.FormEvent) => {
+  const handleAddClient = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newClient.name || !newClient.contactPerson) {
       alert('Please fill out client company name and contact person.');
@@ -189,47 +232,52 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     }
 
     const generatedPass = newClient.password || generateStrongPassword(16);
-    const created: ClientCompany = {
-      id: `cli-0${clients.length + 1}`,
-      name: newClient.name || '',
-      industry: newClient.industry || 'General Industrial',
-      location: newClient.location || 'Mysore Industrial Belt',
-      assignedWorkers: Number(newClient.assignedWorkers) || 15,
-      activeShifts: newClient.activeShifts || ['Shift A (06:00 - 14:00)'],
-      contactPerson: newClient.contactPerson || '',
-      contactEmail: newClient.contactEmail || `hr@${(newClient.name || 'client').toLowerCase().replace(/[^a-z0-9]/g, '')}.com`,
-      contactPhone: newClient.contactPhone || '+91 98450 00000',
-      contractStatus: 'Active',
-      logoPlaceholder: (newClient.name || 'NEW').slice(0, 6).toUpperCase(),
-      deploymentSince: '2026',
-      password: generatedPass,
-    };
 
-    setClients([...clients, created]);
-    setIsAddClientModalOpen(false);
-    // Reset form with new generated password for next time
-    setNewClient({
-      name: '',
-      industry: 'Automotive & Two-Wheeler',
-      location: '',
-      assignedWorkers: 20,
-      contactPerson: '',
-      contactEmail: '',
-      contactPhone: '',
-      contractStatus: 'Active',
-      logoPlaceholder: 'NEW-PLANT',
-      deploymentSince: '2026',
-      password: generateStrongPassword(16),
-      activeShifts: ['Shift A (06:00 - 14:00)', 'Shift B (14:00 - 22:00)'],
-    });
+    try {
+      const created = await createClient({
+        name: newClient.name,
+        industry: newClient.industry || 'General Industrial',
+        location: newClient.location || 'Mysore Industrial Belt',
+        assignedWorkers: Number(newClient.assignedWorkers) || 15,
+        activeShifts: newClient.activeShifts || ['Shift A (06:00 - 14:00)'],
+        contactPerson: newClient.contactPerson,
+        contactEmail: newClient.contactEmail || `hr@${newClient.name.toLowerCase().replace(/[^a-z0-9]/g, '')}.com`,
+        contactPhone: newClient.contactPhone || '+91 98450 00000',
+        contractStatus: 'Active',
+        password: generatedPass,
+      });
+
+      setClients([...clients, created]);
+      setIsAddClientModalOpen(false);
+      setNewClient({
+        name: '',
+        industry: 'Automotive & Two-Wheeler',
+        location: '',
+        assignedWorkers: 20,
+        contactPerson: '',
+        contactEmail: '',
+        contactPhone: '',
+        contractStatus: 'Active',
+        logoPlaceholder: 'NEW-PLANT',
+        deploymentSince: '2026',
+        password: generateStrongPassword(16),
+        activeShifts: ['Shift A (06:00 - 14:00)', 'Shift B (14:00 - 22:00)'],
+      });
+    } catch (err: any) {
+      alert('Failed to create client: ' + err.message);
+    }
   };
 
-  const toggleAttendance = (empId: string) => {
-    setAttendanceRecords((prev) => {
-      const current = prev[empId] || 'Present';
-      const next = current === 'Present' ? 'Absent' : current === 'Absent' ? 'Shift Swapped' : 'Present';
-      return { ...prev, [empId]: next };
-    });
+  const toggleAttendance = async (empId: string) => {
+    const current = attendanceRecords[empId] || 'Present';
+    const next = current === 'Present' ? 'Absent' : current === 'Absent' ? 'Shift Swapped' : 'Present';
+    setAttendanceRecords((prev) => ({ ...prev, [empId]: next }));
+
+    try {
+      await apiToggleAttendance(empId);
+    } catch (err) {
+      console.error('Failed to sync attendance toggle:', err);
+    }
   };
 
   const stats = getWorkforceStats(employees);
@@ -410,15 +458,112 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                     <div>
                       <p className="text-slate-900 dark:text-white font-bold">{c.name}</p>
                       <p className="text-[11px] text-slate-500">{c.location}</p>
+          {/* Key Metrics Cards */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 font-mono text-xs">
+            <div className="bg-white dark:bg-industrial-900 rounded-3xl p-5 border border-slate-200 dark:border-white/10 space-y-2 shadow-sm">
+              <span className="text-slate-500 dark:text-slate-400 block">Total Workforce on Roll</span>
+              <div className="flex items-baseline gap-2">
+                <span className="text-3xl font-bold font-display text-slate-900 dark:text-white">{stats.totalOnRoll}</span>
+                <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold font-mono">100% ESI/EPF</span>
+              </div>
+              <span className="text-[11px] text-slate-500">Karnataka labour licensed</span>
+            </div>
+
+            <div className="bg-white dark:bg-industrial-900 rounded-3xl p-5 border border-slate-200 dark:border-white/10 space-y-2 shadow-sm">
+              <span className="text-slate-500 dark:text-slate-400 block">Active Deployed Shifts</span>
+              <div className="flex items-baseline gap-2">
+                <span className="text-3xl font-bold font-display text-emerald-600 dark:text-emerald-400">{stats.activeCount}</span>
+                <span className="text-[10px] text-slate-400 font-mono">Workers On Line</span>
+              </div>
+              <span className="text-[11px] text-slate-500">Across Mysuru industrial clusters</span>
+            </div>
+
+            <div className="bg-white dark:bg-industrial-900 rounded-3xl p-5 border border-slate-200 dark:border-white/10 space-y-2 shadow-sm">
+              <span className="text-slate-500 dark:text-slate-400 block">Hot Standby Reserve Pool</span>
+              <div className="flex items-baseline gap-2">
+                <span className="text-3xl font-bold font-display text-amber-500 dark:text-sbe-gold">{stats.inReserveCount}</span>
+                <span className="text-[10px] text-amber-600 dark:text-amber-400 font-mono">&lt; 45 min dispatch</span>
+              </div>
+              <span className="text-[11px] text-slate-500">Ready for line replacement</span>
+            </div>
+
+            <div className="bg-white dark:bg-industrial-900 rounded-3xl p-5 border border-slate-200 dark:border-white/10 space-y-2 shadow-sm">
+              <span className="text-slate-500 dark:text-slate-400 block">Client Companies Mapped</span>
+              <div className="flex items-baseline gap-2">
+                <span className="text-3xl font-bold font-display text-sbe-royal dark:text-cyan-400">{clients.length}</span>
+                <span className="text-[10px] text-slate-400 font-mono">Automotive &amp; FMCG</span>
+              </div>
+              <span className="text-[11px] text-slate-500">TVS, Hector, South Bottlers...</span>
+            </div>
+          </div>
+
+          {/* Quick Actions & Deployment Distribution */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Native State Sourcing Diversity */}
+            <div className="lg:col-span-2 bg-white dark:bg-industrial-900 rounded-3xl p-6 border border-slate-200 dark:border-white/10 space-y-4 shadow-sm font-mono text-xs">
+              <div className="flex justify-between items-center">
+                <h3 className="text-base font-bold font-display text-slate-900 dark:text-white">Interstate Workforce Diversity (Migrant Supply Corridor)</h3>
+                <span className="text-[11px] text-slate-500">Police &amp; Aadhaar Verified</span>
+              </div>
+              <p className="text-slate-600 dark:text-slate-400 font-sans text-xs">
+                SBE operates direct recruitment pipelines across 5 North and Central Indian states, guaranteeing continuous replacement manpower with zero local labor union disruption.
+              </p>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 pt-2">
+                {Object.entries(stats.stateDistribution).map(([state, count]) => (
+                  <div key={state} className="p-3.5 rounded-2xl bg-slate-50 dark:bg-industrial-950 border border-slate-200 dark:border-white/5 flex items-center justify-between">
+                    <div>
+                      <span className="text-slate-500 block text-[10px] uppercase font-bold">{state}</span>
+                      <strong className="text-slate-900 dark:text-white text-base">{count} Workers</strong>
                     </div>
-                    <div className="text-right">
-                      <span className="text-sbe-royal dark:text-sbe-gold font-bold text-sm block">
-                        {c.assignedWorkers} Workers
-                      </span>
-                      <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold">{c.contractStatus}</span>
-                    </div>
+                    <span className="text-sbe-royal dark:text-sbe-gold font-bold text-sm">
+                      {stats.totalOnRoll > 0 ? Math.round((count / stats.totalOnRoll) * 100) : 0}%
+                    </span>
                   </div>
                 ))}
+              </div>
+            </div>
+
+            {/* Quick Actions Widget */}
+            <div className="bg-white dark:bg-industrial-900 rounded-3xl p-6 border border-slate-200 dark:border-white/10 space-y-4 shadow-sm font-mono text-xs">
+              <h3 className="text-base font-bold font-display text-slate-900 dark:text-white">Administrative Actions</h3>
+              <div className="space-y-2.5">
+                {!isClientHR && (
+                  <button
+                    onClick={() => setIsAddModalOpen(true)}
+                    className="w-full p-3.5 rounded-2xl bg-blue-50 dark:bg-sbe-royal/20 hover:bg-blue-100 dark:hover:bg-sbe-royal/30 text-sbe-royal dark:text-cyan-300 font-bold flex items-center justify-between border border-blue-200 dark:border-sbe-royal/30 transition-all"
+                  >
+                    <span className="flex items-center gap-2">
+                      <Plus className="w-4 h-4" />
+                      <span>Enroll New Worker</span>
+                    </span>
+                    <span className="text-[10px] bg-white dark:bg-industrial-900 px-2 py-0.5 rounded border border-blue-200 dark:border-white/10">Quick Form</span>
+                  </button>
+                )}
+
+                {!isClientHR && (
+                  <button
+                    onClick={() => setIsAddClientModalOpen(true)}
+                    className="w-full p-3.5 rounded-2xl bg-amber-50 dark:bg-amber-500/10 hover:bg-amber-100 dark:hover:bg-amber-500/20 text-amber-800 dark:text-sbe-gold font-bold flex items-center justify-between border border-amber-200 dark:border-amber-500/30 transition-all"
+                  >
+                    <span className="flex items-center gap-2">
+                      <Building2 className="w-4 h-4" />
+                      <span>Register Client Plant</span>
+                    </span>
+                    <span className="text-[10px] bg-white dark:bg-industrial-900 px-2 py-0.5 rounded border border-amber-200 dark:border-white/10">Client Portal</span>
+                  </button>
+                )}
+
+                <button
+                  onClick={() => setActiveAdminTab('attendance')}
+                  className="w-full p-3.5 rounded-2xl bg-emerald-50 dark:bg-emerald-500/10 hover:bg-emerald-100 dark:hover:bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 font-bold flex items-center justify-between border border-emerald-200 dark:border-emerald-500/30 transition-all"
+                >
+                  <span className="flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>Live Shift Roll Call</span>
+                  </span>
+                  <span className="text-[10px] bg-white dark:bg-industrial-900 px-2 py-0.5 rounded border border-emerald-200 dark:border-white/10">3 Shifts</span>
+                </button>
               </div>
             </div>
           </div>
@@ -452,61 +597,83 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               )}
             </div>
 
-            {/* Workers Table */}
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs font-mono">
-                <thead>
-                  <tr className="border-b border-slate-200 dark:border-white/10 text-slate-500">
-                    <th className="py-3 px-3">Emp ID</th>
-                    <th className="py-3 px-3">Worker Name</th>
-                    <th className="py-3 px-3">Role / Skill</th>
-                    <th className="py-3 px-3">Native Origin</th>
-                    <th className="py-3 px-3">Current Assignment</th>
-                    <th className="py-3 px-3">Shift</th>
-                    <th className="py-3 px-3">Phone</th>
-                    <th className="py-3 px-3">Status</th>
-                    <th className="py-3 px-3 text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-white/5">
-                  {searchedEmployees.map((emp) => (
-                    <tr key={emp.id} className="hover:bg-slate-50 dark:hover:bg-white/5 transition-colors">
-                      <td className="py-3 px-3 font-bold text-sbe-royal dark:text-sbe-gold">{emp.id}</td>
-                      <td className="py-3 px-3 font-semibold text-slate-900 dark:text-white">{emp.name}</td>
-                      <td className="py-3 px-3 text-slate-700 dark:text-slate-300">{emp.role}</td>
-                      <td className="py-3 px-3 text-slate-600 dark:text-cyan-300">{emp.nativeDistrict}, {emp.nativeState}</td>
-                      <td className="py-3 px-3 text-slate-700 dark:text-slate-300 max-w-[180px] truncate" title={emp.clientCompany}>
-                        {emp.clientCompany}
-                      </td>
-                      <td className="py-3 px-3 text-slate-500 dark:text-slate-400">{emp.shift.split(' ')[0]}</td>
-                      <td className="py-3 px-3 text-slate-800 dark:text-slate-200 font-semibold">{emp.phone}</td>
-                      <td className="py-3 px-3">
-                        <span
-                          className={`px-2 py-0.5 rounded text-[10px] border ${
-                            emp.status === 'Active'
-                              ? 'bg-emerald-50 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/40'
-                              : 'bg-amber-50 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-500/40'
-                          }`}
-                        >
-                          {emp.status}
-                        </span>
-                      </td>
-                      <td className="py-3 px-3 text-right">
-                        <button
-                          onClick={() => {
-                            const updated = employees.map(e => e.id === emp.id ? { ...e, status: e.status === 'Active' ? 'In Reserve' : 'Active' } : e);
-                            setEmployees(updated as any);
-                          }}
-                          className="text-[11px] text-sbe-royal dark:text-cyan-400 hover:underline font-semibold"
-                        >
-                          Toggle Status
-                        </button>
-                      </td>
+            {/* Workers Table or Empty State */}
+            {searchedEmployees.length === 0 ? (
+              <div className="text-center py-12 px-4 border border-dashed border-slate-200 dark:border-white/10 rounded-2xl space-y-3">
+                <Users className="w-12 h-12 text-slate-300 dark:text-slate-600 mx-auto" />
+                <p className="text-sm font-bold text-slate-700 dark:text-slate-300">No workers currently enrolled in roster.</p>
+                <p className="text-xs text-slate-500 font-mono">Use the "Enroll Worker" button to register your workforce employees.</p>
+                {!isClientHR && (
+                  <button
+                    onClick={() => setIsAddModalOpen(true)}
+                    className="mt-3 px-4 py-2 rounded-xl bg-sbe-royal hover:bg-blue-700 text-white font-bold text-xs inline-flex items-center gap-1.5 shadow"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Enroll First Worker</span>
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs font-mono">
+                  <thead>
+                    <tr className="border-b border-slate-200 dark:border-white/10 text-slate-500">
+                      <th className="py-3 px-3">Emp ID</th>
+                      <th className="py-3 px-3">Worker Name</th>
+                      <th className="py-3 px-3">Role / Skill</th>
+                      <th className="py-3 px-3">Native Origin</th>
+                      <th className="py-3 px-3">Current Assignment</th>
+                      <th className="py-3 px-3">Shift</th>
+                      <th className="py-3 px-3">Phone</th>
+                      <th className="py-3 px-3">Status</th>
+                      <th className="py-3 px-3 text-right">Actions</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-white/5">
+                    {searchedEmployees.map((emp) => (
+                      <tr key={emp.id} className="hover:bg-slate-50 dark:hover:bg-white/5 transition-colors">
+                        <td className="py-3 px-3 font-bold text-sbe-royal dark:text-sbe-gold">{emp.id}</td>
+                        <td className="py-3 px-3 font-semibold text-slate-900 dark:text-white">{emp.name}</td>
+                        <td className="py-3 px-3 text-slate-700 dark:text-slate-300">{emp.role}</td>
+                        <td className="py-3 px-3 text-slate-600 dark:text-cyan-300">{emp.nativeDistrict}, {emp.nativeState}</td>
+                        <td className="py-3 px-3 text-slate-700 dark:text-slate-300 max-w-[180px] truncate" title={emp.clientCompany}>
+                          {emp.clientCompany}
+                        </td>
+                        <td className="py-3 px-3 text-slate-500 dark:text-slate-400">{(emp.shift || '').split(' ')[0]}</td>
+                        <td className="py-3 px-3 text-slate-800 dark:text-slate-200 font-semibold">{emp.phone}</td>
+                        <td className="py-3 px-3">
+                          <span
+                            className={`px-2 py-0.5 rounded text-[10px] border ${
+                              emp.status === 'Active'
+                                ? 'bg-emerald-50 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/40'
+                                : 'bg-amber-50 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-500/40'
+                            }`}
+                          >
+                            {emp.status}
+                          </span>
+                        </td>
+                        <td className="py-3 px-3 text-right">
+                          <button
+                            onClick={async () => {
+                              const nextStatus = emp.status === 'Active' ? 'In Reserve' : 'Active';
+                              setEmployees(employees.map(e => e.id === emp.id ? { ...e, status: nextStatus } : e));
+                              try {
+                                await updateEmployee(emp.id, { status: nextStatus });
+                              } catch (err) {
+                                console.error('Error updating worker status:', err);
+                              }
+                            }}
+                            className="text-[11px] text-sbe-royal dark:text-cyan-400 hover:underline font-semibold"
+                          >
+                            Toggle Status
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </section>
       )}
@@ -529,66 +696,101 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               </button>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 font-mono text-xs">
-              {clients.map((cli) => (
-                <div key={cli.id} className="p-4 rounded-2xl bg-slate-50 dark:bg-industrial-950 border border-slate-200 dark:border-white/5 space-y-3">
-                  <div className="flex justify-between items-start">
-                    <span className="text-[11px] px-2 py-0.5 rounded bg-blue-100 dark:bg-industrial-800 text-sbe-royal dark:text-sbe-gold font-bold">
-                      {cli.logoPlaceholder}
-                    </span>
-                    <span className="text-emerald-600 dark:text-emerald-400 text-[11px] font-semibold">{cli.contractStatus}</span>
-                  </div>
-                  <div>
-                    <h4 className="text-slate-900 dark:text-white font-bold text-sm">{cli.name}</h4>
-                    <p className="text-slate-500 text-[11px]">{cli.location}</p>
-                  </div>
-                  <div className="p-2.5 rounded-lg bg-white dark:bg-industrial-900 border border-slate-200 dark:border-white/5 space-y-1.5">
-                    <div className="flex justify-between text-slate-500">
-                      <span>Assigned Quota:</span>
-                      <strong className="text-slate-900 dark:text-white">{cli.assignedWorkers} Workers</strong>
+            {/* Clients Grid or Empty State */}
+            {clients.length === 0 ? (
+              <div className="text-center py-12 px-4 border border-dashed border-slate-200 dark:border-white/10 rounded-2xl space-y-3">
+                <Building2 className="w-12 h-12 text-slate-300 dark:text-slate-600 mx-auto" />
+                <p className="text-sm font-bold text-slate-700 dark:text-slate-300">No client plants registered yet.</p>
+                <p className="text-xs text-slate-500 font-mono">Click "Add Client Plant" to register your first partner factory.</p>
+                <button
+                  onClick={() => setIsAddClientModalOpen(true)}
+                  className="mt-3 px-4 py-2 rounded-xl bg-sbe-royal hover:bg-blue-700 text-white font-bold text-xs inline-flex items-center gap-1.5 shadow"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Add Client Plant</span>
+                </button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 font-mono text-xs">
+                {clients.map((cli) => (
+                  <div key={cli.id} className="p-4 rounded-2xl bg-slate-50 dark:bg-industrial-950 border border-slate-200 dark:border-white/5 space-y-3">
+                    <div className="flex justify-between items-start">
+                      <span className="text-[11px] px-2 py-0.5 rounded bg-blue-100 dark:bg-industrial-800 text-sbe-royal dark:text-sbe-gold font-bold">
+                        {cli.logoPlaceholder || (cli.name || 'PLANT').slice(0, 6).toUpperCase()}
+                      </span>
+                      <span className="text-emerald-600 dark:text-emerald-400 text-[11px] font-semibold">{cli.contractStatus}</span>
                     </div>
-                    <div className="flex justify-between text-slate-500">
-                      <span>Key Contact:</span>
-                      <span className="text-slate-800 dark:text-slate-200">{cli.contactPerson.split(' ')[0]}</span>
+                    <div>
+                      <h4 className="text-slate-900 dark:text-white font-bold text-sm">{cli.name}</h4>
+                      <p className="text-slate-500 text-[11px]">{cli.location}</p>
                     </div>
-                    {/* Client HR Login Credentials Display */}
-                    <div className="pt-2 mt-2 border-t border-slate-100 dark:border-white/5 space-y-1">
-                      <div className="flex items-center justify-between text-[11px]">
-                        <span className="text-slate-400 flex items-center gap-1">
-                          <Key className="w-3 h-3 text-sbe-royal dark:text-sbe-gold" />
-                          <span>HR Access:</span>
-                        </span>
-                        <span className="text-slate-700 dark:text-slate-300 truncate max-w-[140px] font-mono">
-                          {cli.contactEmail}
-                        </span>
+                    <div className="p-2.5 rounded-lg bg-white dark:bg-industrial-900 border border-slate-200 dark:border-white/5 space-y-1.5">
+                      <div className="flex justify-between text-slate-500">
+                        <span>Assigned Quota:</span>
+                        <strong className="text-slate-900 dark:text-white">{cli.assignedWorkers} Workers</strong>
                       </div>
-                      <div className="flex items-center justify-between bg-slate-100 dark:bg-industrial-950 px-2 py-1 rounded text-[10px] font-mono">
-                        <span className="text-slate-500">Pass:</span>
-                        <span className="text-sbe-royal dark:text-cyan-300 font-bold tracking-wider">
-                          {cli.password || 'Tvs@SBE#2026!9'}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            navigator.clipboard.writeText(cli.password || 'Tvs@SBE#2026!9');
-                            setCopiedPasswordId(cli.id);
-                            setTimeout(() => setCopiedPasswordId(null), 2000);
-                          }}
-                          className="text-slate-500 hover:text-sbe-royal dark:hover:text-white ml-1 p-0.5"
-                          title="Copy Password"
-                        >
-                          {copiedPasswordId === cli.id ? (
-                            <span className="text-emerald-500 font-bold">Copied!</span>
-                          ) : (
-                            <Copy className="w-3 h-3" />
-                          )}
-                        </button>
+                      <div className="flex justify-between text-slate-500">
+                        <span>Key Contact:</span>
+                        <span className="text-slate-800 dark:text-slate-200">{cli.contactPerson.split(' ')[0]}</span>
+                      </div>
+                      {/* Client HR Login Credentials Display */}
+                      <div className="pt-2 mt-2 border-t border-slate-100 dark:border-white/5 space-y-1">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-slate-400 flex items-center gap-1">
+                            <Key className="w-3 h-3 text-sbe-royal dark:text-sbe-gold" />
+                            <span>HR Access:</span>
+                          </span>
+                          <span className="text-slate-700 dark:text-slate-300 truncate max-w-[140px] font-mono">
+                            {cli.contactEmail}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between bg-slate-100 dark:bg-industrial-950 px-2 py-1 rounded text-[10px] font-mono">
+                          <span className="text-slate-500">Pass:</span>
+                          <span className="text-sbe-royal dark:text-cyan-300 font-bold tracking-wider">
+                            {cli.password || 'Tvs@SBE#2026!9'}
+                          </span>
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                navigator.clipboard.writeText(cli.password || 'Tvs@SBE#2026!9');
+                                setCopiedPasswordId(cli.id);
+                                setTimeout(() => setCopiedPasswordId(null), 2000);
+                              }}
+                              className="text-slate-500 hover:text-sbe-royal dark:hover:text-white ml-1 p-0.5"
+                              title="Copy Password"
+                            >
+                              {copiedPasswordId === cli.id ? (
+                                <span className="text-emerald-500 font-bold">Copied!</span>
+                              ) : (
+                                <Copy className="w-3 h-3" />
+                              )}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                try {
+                                  const res = await regenerateClientPassword(cli.id);
+                                  if (res && res.newPassword) {
+                                    setClients(clients.map(c => c.id === cli.id ? { ...c, password: res.newPassword } : c));
+                                  }
+                                } catch (err) {
+                                  console.error('Failed to regenerate password:', err);
+                                }
+                              }}
+                              className="text-slate-500 hover:text-sbe-royal dark:hover:text-white p-0.5"
+                              title="Regenerate Strong Password"
+                            >
+                              <RefreshCw className="w-3 h-3" />
+                            </button>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
         </section>
       )}

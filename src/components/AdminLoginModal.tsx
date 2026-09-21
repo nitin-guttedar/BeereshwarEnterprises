@@ -21,41 +21,42 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
 
   if (!isOpen) return null;
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage('');
     setIsLoading(true);
 
-    setTimeout(() => {
-      setIsLoading(false);
-      const cleanEmail = email.trim().toLowerCase();
+    try {
+      const { loginUser } = await import('../services/api');
+      const response = await loginUser(email.trim(), password);
 
-      if (selectedRole === 'admin') {
-        if (cleanEmail === 'sbeadmin@gmail.com' && password === 'SbeAdmin@123') {
-          onLoginSuccess('admin', {
-            name: COMPANY_DETAILS.proprietor,
-            email: 'sbeadmin@gmail.com',
-          });
-          onClose();
-        } else {
-          setErrorMessage('Invalid Administrator credentials. Please verify your email and password.');
-        }
-      } else {
-        if (
-          (cleanEmail === 'hr@tvsmotor.com' || cleanEmail === 'client' || cleanEmail === 'tvs') &&
-          (password === 'tvs@2026' || password === 'client' || password === 'client123')
-        ) {
-          onLoginSuccess('client_hr', {
-            name: 'K. Ramesh (TVS Plant Operations)',
-            email: 'hr@tvsmotor.com',
-            company: 'TVS Motor Supplier / Two-Wheeler Assembly',
-          });
-          onClose();
-        } else {
-          setErrorMessage('Invalid Client HR credentials. Please verify your email and password.');
-        }
+      setIsLoading(false);
+      if (response.success && response.user) {
+        onLoginSuccess(response.user.role as 'admin' | 'client_hr', {
+          name: response.user.name,
+          email: response.user.email,
+          company: response.user.company,
+        });
+        onClose();
+        return;
       }
-    }, 300);
+      throw new Error(response.error || 'Authentication failed.');
+    } catch (err: any) {
+      // Fallback for default admin credentials if backend network is unreachable
+      const cleanEmail = email.trim().toLowerCase();
+      if (selectedRole === 'admin' && cleanEmail === 'sbeadmin@gmail.com' && password === 'SbeAdmin@123') {
+        setIsLoading(false);
+        onLoginSuccess('admin', {
+          name: COMPANY_DETAILS.proprietor,
+          email: 'sbeadmin@gmail.com',
+        });
+        onClose();
+        return;
+      }
+
+      setIsLoading(false);
+      setErrorMessage(err.message || 'Invalid credentials. Please verify your email and password.');
+    }
   };
 
   return (

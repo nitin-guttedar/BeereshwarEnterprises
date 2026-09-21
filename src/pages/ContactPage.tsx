@@ -31,7 +31,7 @@ export const ContactPage: React.FC = () => {
 
   const [isSubmitted, setIsSubmitted] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.companyName || !formData.phone || !formData.contactPerson) {
       alert('Please fill out the required fields.');
@@ -42,6 +42,24 @@ export const ContactPage: React.FC = () => {
     try {
       confetti({ particleCount: 70, spread: 80, origin: { y: 0.6 } });
     } catch (e) {}
+
+    try {
+      const { submitProposal } = await import('../services/api');
+      await submitProposal({
+        companyName: formData.companyName,
+        contactName: formData.contactPerson,
+        email: formData.email,
+        phone: formData.phone,
+        location: formData.plantLocation,
+        industry: formData.serviceNeeded,
+        manpowerCount: parseInt(formData.manpowerNeeded) || 20,
+        roleRequirement: formData.serviceNeeded,
+        shiftsRequired: formData.shiftStructure,
+        notes: `Urgency: ${formData.urgency} | Designation: ${formData.designation} | Notes: ${formData.notes}`,
+      });
+    } catch (err) {
+      console.error('Failed to sync proposal with backend:', err);
+    }
   };
 
   return (
