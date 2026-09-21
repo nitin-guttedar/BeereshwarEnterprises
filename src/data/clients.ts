@@ -11,7 +11,6 @@ export interface ClientCompany {
   contractStatus: 'Active' | 'Under Renewal' | 'Scaling Up';
   logoPlaceholder: string;
   deploymentSince: string;
-  password?: string;
 }
 
 export const CLIENTS_DATA: ClientCompany[] = [

@@ -21,6 +21,18 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
 
   if (!isOpen) return null;
 
+  const handleFillDemo = (role: 'admin' | 'client_hr') => {
+    setSelectedRole(role);
+    setErrorMessage('');
+    if (role === 'admin') {
+      setEmail('admin@sbe.in');
+      setPassword('sbe@1999');
+    } else {
+      setEmail('hr@tvsmotor.com');
+      setPassword('tvs@2026');
+    }
+  };
+
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage('');
@@ -31,14 +43,17 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
       const cleanEmail = email.trim().toLowerCase();
 
       if (selectedRole === 'admin') {
-        if (cleanEmail === 'sbeadmin@gmail.com' && password === 'SbeAdmin@123') {
+        if (
+          (cleanEmail === 'admin@sbe.in' || cleanEmail === 'admin' || cleanEmail === 'pavan@sbe.in') &&
+          (password === 'sbe@1999' || password === 'admin' || password === 'admin123')
+        ) {
           onLoginSuccess('admin', {
             name: COMPANY_DETAILS.proprietor,
-            email: 'sbeadmin@gmail.com',
+            email: 'admin@sbe.in',
           });
           onClose();
         } else {
-          setErrorMessage('Invalid Administrator credentials. Please verify your email and password.');
+          setErrorMessage('Invalid Administrator credentials. Hint: Click "Fill Admin Demo" below.');
         }
       } else {
         if (
@@ -52,10 +67,10 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
           });
           onClose();
         } else {
-          setErrorMessage('Invalid Client HR credentials. Please verify your email and password.');
+          setErrorMessage('Invalid Client HR credentials. Hint: Click "Fill Client HR Demo" below.');
         }
       }
-    }, 300);
+    }, 400);
   };
 
   return (
@@ -89,10 +104,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
         <div className="grid grid-cols-2 gap-2 p-1.5 rounded-2xl bg-slate-100 dark:bg-industrial-950 border border-slate-200 dark:border-white/5 mb-6 text-xs font-mono">
           <button
             type="button"
-            onClick={() => {
-              setSelectedRole('admin');
-              setErrorMessage('');
-            }}
+            onClick={() => handleFillDemo('admin')}
             className={`py-2.5 px-3 rounded-xl flex items-center justify-center gap-1.5 transition-all ${
               selectedRole === 'admin'
                 ? 'bg-sbe-royal text-white font-bold shadow-md'
@@ -105,10 +117,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
 
           <button
             type="button"
-            onClick={() => {
-              setSelectedRole('client_hr');
-              setErrorMessage('');
-            }}
+            onClick={() => handleFillDemo('client_hr')}
             className={`py-2.5 px-3 rounded-xl flex items-center justify-center gap-1.5 transition-all ${
               selectedRole === 'client_hr'
                 ? 'bg-sbe-royal text-white font-bold shadow-md'
@@ -139,7 +148,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
               <input
                 type="text"
                 required
-                placeholder={selectedRole === 'admin' ? 'Enter admin email' : 'Enter client HR email'}
+                placeholder={selectedRole === 'admin' ? 'admin@sbe.in' : 'hr@tvsmotor.com'}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full bg-slate-50 dark:bg-industrial-950 border border-slate-200 dark:border-white/10 rounded-xl pl-10 pr-4 py-2.5 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-sbe-royal"
@@ -156,7 +165,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
               <input
                 type="password"
                 required
-                placeholder="Enter password"
+                placeholder="••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="w-full bg-slate-50 dark:bg-industrial-950 border border-slate-200 dark:border-white/10 rounded-xl pl-10 pr-4 py-2.5 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-sbe-royal"
@@ -179,6 +188,29 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
             )}
           </button>
         </form>
+
+        {/* Demo Credentials Quick Fill Bar */}
+        <div className="mt-6 pt-4 border-t border-slate-200 dark:border-white/10 text-center">
+          <p className="text-[11px] font-mono text-slate-500 dark:text-slate-400 mb-2">
+            One-Click Demo Credentials:
+          </p>
+          <div className="flex justify-center gap-2">
+            <button
+              type="button"
+              onClick={() => handleFillDemo('admin')}
+              className="px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-industrial-950 border border-slate-200 dark:border-white/10 text-[11px] font-mono text-sbe-royal dark:text-sbe-gold hover:bg-slate-200"
+            >
+              Fill Admin Demo (sbe@1999)
+            </button>
+            <button
+              type="button"
+              onClick={() => handleFillDemo('client_hr')}
+              className="px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-industrial-950 border border-slate-200 dark:border-white/10 text-[11px] font-mono text-blue-600 dark:text-cyan-400 hover:bg-slate-200"
+            >
+              Fill Client HR (tvs@2026)
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );
