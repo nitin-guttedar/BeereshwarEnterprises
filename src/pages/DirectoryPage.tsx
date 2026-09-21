@@ -1,5 +1,6 @@
-import React, { useState, useMemo } from 'react';
-import { EmployeeRecord, INITIAL_EMPLOYEES } from '../data/employees';
+import React, { useState, useEffect, useMemo } from 'react';
+import { EmployeeRecord } from '../data/employees';
+import { fetchEmployees } from '../services/api';
 import { EmployeeModal } from '../components/EmployeeModal';
 import { COMPANY_DETAILS } from '../data/company';
 import { 
@@ -23,6 +24,8 @@ export const DirectoryPage: React.FC<DirectoryPageProps> = ({
   userRole,
   setUserRole,
 }) => {
+  const [employees, setEmployees] = useState<EmployeeRecord[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedState, setSelectedState] = useState<string>('All');
   const [selectedRole, setSelectedRole] = useState<string>('All');
@@ -32,36 +35,59 @@ export const DirectoryPage: React.FC<DirectoryPageProps> = ({
 
   const isAuthenticated = userRole === 'client_hr' || userRole === 'admin';
 
-  // Extract unique options for filter dropdowns
-  const states = ['All', 'Uttar Pradesh', 'Bihar', 'Jharkhand'];
-  const roles = [
-    'All',
-    'Assembly Line Operator',
-    'FMCG Packer',
-    'Heavy Loader',
-    'Machine Helper',
-    'Material Handler',
-    'Yard Specialist',
-    'Housekeeping & Utility',
-  ];
-  const companies = [
-    'All',
-    'TVS Motor Supplier / Two-Wheeler Assembly',
-    'Hector Beverages (Paperboat Juices & Beverages)',
-    'South Bottlers (Coca-Cola Bottling Partner)',
-    'AutoTech Precision Ancillary Components',
-    'LogiHub South Logistics & Warehouse Terminal',
-    'Metagalli Heavy Engineering & Line Parts',
-    'Reserve Pool / Hot Standby',
-  ];
+  useEffect(() => {
+    let isCancelled = false;
+    fetchEmployees()
+      .then((data) => {
+        if (!isCancelled) {
+          setEmployees(data || []);
+          setIsLoading(false);
+        }
+      })
+      .catch((err) => {
+        console.error('Failed to load employees:', err);
+        if (!isCancelled) {
+          setIsLoading(false);
+        }
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, []);
+
+  // Extract unique options for filter dropdowns dynamically from real workforce
+  const states = useMemo(() => {
+    const set = new Set<string>();
+    employees.forEach((e) => {
+      if (e.nativeState) set.add(e.nativeState);
+    });
+    return ['All', ...Array.from(set)];
+  }, [employees]);
+
+  const roles = useMemo(() => {
+    const set = new Set<string>();
+    employees.forEach((e) => {
+      if (e.role) set.add(e.role);
+    });
+    return ['All', ...Array.from(set)];
+  }, [employees]);
+
+  const companies = useMemo(() => {
+    const set = new Set<string>();
+    employees.forEach((e) => {
+      if (e.clientCompany) set.add(e.clientCompany);
+    });
+    return ['All', ...Array.from(set)];
+  }, [employees]);
 
   // Filtering Logic
   const filteredEmployees = useMemo(() => {
-    return INITIAL_EMPLOYEES.filter((emp) => {
+    return employees.filter((emp) => {
       const matchesSearch =
         emp.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         emp.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        emp.nativeDistrict.toLowerCase().includes(searchQuery.toLowerCase());
+        (emp.nativeDistrict && emp.nativeDistrict.toLowerCase().includes(searchQuery.toLowerCase()));
 
       const matchesState = selectedState === 'All' || emp.nativeState === selectedState;
       const matchesRole = selectedRole === 'All' || emp.role === selectedRole;
@@ -70,7 +96,7 @@ export const DirectoryPage: React.FC<DirectoryPageProps> = ({
 
       return matchesSearch && matchesState && matchesRole && matchesCompany && matchesStatus;
     });
-  }, [searchQuery, selectedState, selectedRole, selectedCompany, selectedStatus]);
+  }, [employees, searchQuery, selectedState, selectedRole, selectedCompany, selectedStatus]);
 
   // CSV Export
   const handleExportCSV = () => {
@@ -267,12 +293,32 @@ export const DirectoryPage: React.FC<DirectoryPageProps> = ({
       {/* Directory Grid View */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between mb-6 text-xs font-mono text-slate-500 dark:text-slate-400">
-          <span>Showing {filteredEmployees.length} registered employee profiles (500+ total in system)</span>
+          <span>Showing {filteredEmployees.length} registered employee profiles</span>
           <span>Click any card for full compliance profile</span>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {filteredEmployees.map((emp) => {
+        {isLoading ? (
+          <div className="text-center py-16">
+            <div className="w-8 h-8 border-3 border-sbe-royal border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+            <p className="text-xs font-mono text-slate-500">Loading live workforce roster...</p>
+          </div>
+        ) : employees.length === 0 ? (
+          <div className="text-center py-16 px-4 border border-dashed border-slate-200 dark:border-white/10 rounded-2xl space-y-3">
+            <Users className="w-12 h-12 text-slate-300 dark:text-slate-600 mx-auto" />
+            <h4 className="text-base font-bold text-slate-700 dark:text-slate-300">No Workforce Enrolled Yet</h4>
+            <p className="text-xs text-slate-500 font-mono max-w-md mx-auto">
+              Workforce records enrolled by the Administrator in the Admin Portal will appear dynamically in this live roster.
+            </p>
+          </div>
+        ) : filteredEmployees.length === 0 ? (
+          <div className="text-center py-12 px-4 border border-dashed border-slate-200 dark:border-white/10 rounded-2xl space-y-2">
+            <Search className="w-10 h-10 text-slate-400 mx-auto" />
+            <h4 className="text-sm font-bold text-slate-700 dark:text-slate-300">No Matching Workers</h4>
+            <p className="text-xs text-slate-500 font-mono">Try adjusting your filters or search keywords.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            {filteredEmployees.map((emp) => {
             const maskedPhone = isAuthenticated
               ? emp.phone
               : emp.phone.replace(/(\+91 \d{2})\d{4}(\d{4})/, '$1****$2');
@@ -347,6 +393,7 @@ export const DirectoryPage: React.FC<DirectoryPageProps> = ({
             );
           })}
         </div>
+      )}
       </section>
 
       {/* Profile Detail Modal */}

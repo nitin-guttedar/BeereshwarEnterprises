@@ -1,5 +1,6 @@
-import React from 'react';
-import { CLIENTS_DATA } from '../data/clients';
+import React, { useState, useEffect } from 'react';
+import { ClientCompany } from '../data/clients';
+import { fetchClients } from '../services/api';
 import { 
   Factory, 
   Boxes, 
@@ -17,6 +18,30 @@ interface IndustriesPageProps {
 }
 
 export const IndustriesPage: React.FC<IndustriesPageProps> = ({ setCurrentTab }) => {
+  const [clients, setClients] = useState<ClientCompany[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    let isCancelled = false;
+    fetchClients()
+      .then((data) => {
+        if (!isCancelled) {
+          setClients(data || []);
+          setIsLoading(false);
+        }
+      })
+      .catch((err) => {
+        console.error('Failed to fetch clients:', err);
+        if (!isCancelled) {
+          setIsLoading(false);
+        }
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, []);
+
   const industries = [
     {
       id: 'automotive',
@@ -235,52 +260,67 @@ export const IndustriesPage: React.FC<IndustriesPageProps> = ({ setCurrentTab })
           </p>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {CLIENTS_DATA.map((client) => (
-            <div
-              key={client.id}
-              className="glass-panel glass-panel-hover rounded-2xl p-6 border border-slate-200 dark:border-white/10 space-y-4 shadow-sm"
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-mono text-sbe-royal dark:text-sbe-gold bg-blue-50 dark:bg-safety-amber/10 px-2 py-0.5 rounded border border-blue-200 dark:border-safety-amber/30 font-bold">
-                  {client.logoPlaceholder}
-                </span>
-                <span className="text-xs font-mono text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-200 dark:border-emerald-500/30 font-semibold">
-                  {client.contractStatus}
-                </span>
-              </div>
-
-              <div>
-                <h4 className="text-lg font-bold font-display text-slate-900 dark:text-white">
-                  {client.name}
-                </h4>
-                <p className="text-xs text-slate-500 font-mono mt-0.5">
-                  {client.location}
-                </p>
-              </div>
-
-              <div className="p-3 rounded-xl bg-slate-50 dark:bg-industrial-900 border border-slate-200 dark:border-white/5 font-mono text-xs space-y-1">
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Workers Assigned:</span>
-                  <span className="text-slate-900 dark:text-white font-bold">{client.assignedWorkers} Staff</span>
+        {isLoading ? (
+          <div className="text-center py-12">
+            <div className="w-8 h-8 border-3 border-sbe-royal border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+            <p className="text-xs font-mono text-slate-500">Loading client plant facilities...</p>
+          </div>
+        ) : clients.length === 0 ? (
+          <div className="text-center py-12 px-4 border border-dashed border-slate-200 dark:border-white/10 rounded-2xl space-y-3">
+            <Building2 className="w-12 h-12 text-slate-300 dark:text-slate-600 mx-auto" />
+            <h4 className="text-base font-bold text-slate-700 dark:text-slate-300">No Client Plants Registered Yet</h4>
+            <p className="text-xs text-slate-500 font-mono max-w-md mx-auto">
+              Client manufacturing facilities registered by the Administrator in the portal will appear dynamically here.
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {clients.map((client) => (
+              <div
+                key={client.id}
+                className="glass-panel glass-panel-hover rounded-2xl p-6 border border-slate-200 dark:border-white/10 space-y-4 shadow-sm"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-mono text-sbe-royal dark:text-sbe-gold bg-blue-50 dark:bg-safety-amber/10 px-2 py-0.5 rounded border border-blue-200 dark:border-safety-amber/30 font-bold">
+                    {client.logoPlaceholder}
+                  </span>
+                  <span className="text-xs font-mono text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-200 dark:border-emerald-500/30 font-semibold">
+                    {client.contractStatus}
+                  </span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Sector:</span>
-                  <span className="text-sbe-royal dark:text-cyan-300 font-semibold">{client.industry}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Partner Since:</span>
-                  <span className="text-slate-700 dark:text-slate-200 font-medium">{client.deploymentSince}</span>
-                </div>
-              </div>
 
-              <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
-                <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                <span>On-site supervisor: {client.contactPerson.split(' ')[0]}</span>
+                <div>
+                  <h4 className="text-lg font-bold font-display text-slate-900 dark:text-white">
+                    {client.name}
+                  </h4>
+                  <p className="text-xs text-slate-500 font-mono mt-0.5">
+                    {client.location}
+                  </p>
+                </div>
+
+                <div className="p-3 rounded-xl bg-slate-50 dark:bg-industrial-900 border border-slate-200 dark:border-white/5 font-mono text-xs space-y-1">
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Workers Assigned:</span>
+                    <span className="text-slate-900 dark:text-white font-bold">{client.assignedWorkers} Staff</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Sector:</span>
+                    <span className="text-sbe-royal dark:text-cyan-300 font-semibold">{client.industry}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Partner Since:</span>
+                    <span className="text-slate-700 dark:text-slate-200 font-medium">{client.deploymentSince}</span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+                  <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                  <span>On-site supervisor: {client.contactPerson.split(' ')[0]}</span>
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </section>
     </div>
   );
