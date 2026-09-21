@@ -4,10 +4,13 @@ import { ClientCompany } from '../../data/clients';
 import { 
   fetchClients, 
   createClient, 
+  updateClient,
+  deleteClient,
   regenerateClientPassword,
   fetchEmployees, 
   createEmployee, 
   updateEmployee, 
+  deleteEmployee,
   fetchAttendance, 
   toggleAttendance as apiToggleAttendance 
 } from '../../services/api';
@@ -33,7 +36,9 @@ import {
   Key,
   Loader2,
   AlertCircle,
-  X
+  X,
+  Pencil,
+  Trash2
 } from 'lucide-react';
 import { Skeleton, MetricCardSkeleton, ClientCardSkeleton } from '../../components/Skeleton';
 
@@ -70,6 +75,49 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [pendingActions, setPendingActions] = useState<{ [key: string]: boolean }>({});
   const [banner, setBanner] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  // Edit & Delete Employee State
+  const [editingEmployee, setEditingEmployee] = useState<EmployeeRecord | null>(null);
+  const [deleteConfirmEmp, setDeleteConfirmEmp] = useState<EmployeeRecord | null>(null);
+
+  // Edit & Delete Client State
+  const [editingClient, setEditingClient] = useState<ClientCompany | null>(null);
+  const [deleteConfirmClient, setDeleteConfirmClient] = useState<ClientCompany | null>(null);
+
+  // Helper to format shift badges cleanly
+  const getShiftBadge = (shiftStr?: string) => {
+    const s = (shiftStr || '').toLowerCase();
+    if (s.includes('shift a') || s === 'shifta') {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60 font-mono">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+          Shift A (06:00 - 14:00)
+        </span>
+      );
+    }
+    if (s.includes('shift b') || s === 'shiftb') {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800/60 font-mono">
+          <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+          Shift B (14:00 - 22:00)
+        </span>
+      );
+    }
+    if (s.includes('shift c') || s === 'shiftc') {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800/60 font-mono">
+          <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
+          Shift C (22:00 - 06:00)
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800/60 font-mono">
+        <span className="w-1.5 h-1.5 rounded-full bg-purple-500"></span>
+        General Duty (08:30 - 17:30)
+      </span>
+    );
+  };
 
   // Add Employee Modal State
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -407,6 +455,81 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       setBanner({ type: 'error', message: 'Failed to regenerate password: ' + (err?.message || 'Server error') });
     } finally {
       setPendingActions((prev) => ({ ...prev, [actionKey]: false }));
+    }
+  };
+
+  const handleUpdateEmployee = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingEmployee || pendingActions['edit-employee']) return;
+    setPendingActions((prev) => ({ ...prev, 'edit-employee': true }));
+
+    try {
+      const updated = await updateEmployee(editingEmployee.id, editingEmployee);
+      setEmployees((prev) => prev.map((emp) => (emp.id === editingEmployee.id ? { ...emp, ...updated } : emp)));
+      setEditingEmployee(null);
+      setBanner({ type: 'success', message: `Worker ${editingEmployee.name} (${editingEmployee.id}) updated successfully in database!` });
+      setTimeout(() => setBanner(null), 4000);
+    } catch (err: any) {
+      setBanner({ type: 'error', message: 'Failed to update employee: ' + (err?.message || 'Server error') });
+    } finally {
+      setPendingActions((prev) => ({ ...prev, 'edit-employee': false }));
+    }
+  };
+
+  const handleDeleteEmployee = async () => {
+    if (!deleteConfirmEmp || pendingActions['delete-employee']) return;
+    setPendingActions((prev) => ({ ...prev, 'delete-employee': true }));
+
+    try {
+      await deleteEmployee(deleteConfirmEmp.id);
+      setEmployees((prev) => prev.filter((emp) => emp.id !== deleteConfirmEmp.id));
+      setAttendanceRecords((prev) => {
+        const copy = { ...prev };
+        delete copy[deleteConfirmEmp.id];
+        return copy;
+      });
+      setDeleteConfirmEmp(null);
+      setBanner({ type: 'success', message: `Worker ${deleteConfirmEmp.name} (${deleteConfirmEmp.id}) removed from roster.` });
+      setTimeout(() => setBanner(null), 4000);
+    } catch (err: any) {
+      setBanner({ type: 'error', message: 'Failed to delete worker: ' + (err?.message || 'Server error') });
+    } finally {
+      setPendingActions((prev) => ({ ...prev, 'delete-employee': false }));
+    }
+  };
+
+  const handleUpdateClient = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingClient || pendingActions['edit-client']) return;
+    setPendingActions((prev) => ({ ...prev, 'edit-client': true }));
+
+    try {
+      const updated = await updateClient(editingClient.id, editingClient);
+      setClients((prev) => prev.map((cli) => (cli.id === editingClient.id ? { ...cli, ...updated } : cli)));
+      setEditingClient(null);
+      setBanner({ type: 'success', message: `Client plant ${editingClient.name} updated successfully in database!` });
+      setTimeout(() => setBanner(null), 4000);
+    } catch (err: any) {
+      setBanner({ type: 'error', message: 'Failed to update client: ' + (err?.message || 'Server error') });
+    } finally {
+      setPendingActions((prev) => ({ ...prev, 'edit-client': false }));
+    }
+  };
+
+  const handleDeleteClient = async () => {
+    if (!deleteConfirmClient || pendingActions['delete-client']) return;
+    setPendingActions((prev) => ({ ...prev, 'delete-client': true }));
+
+    try {
+      await deleteClient(deleteConfirmClient.id);
+      setClients((prev) => prev.filter((cli) => cli.id !== deleteConfirmClient.id));
+      setDeleteConfirmClient(null);
+      setBanner({ type: 'success', message: `Client plant ${deleteConfirmClient.name} deleted successfully.` });
+      setTimeout(() => setBanner(null), 4000);
+    } catch (err: any) {
+      setBanner({ type: 'error', message: 'Failed to delete client: ' + (err?.message || 'Server error') });
+    } finally {
+      setPendingActions((prev) => ({ ...prev, 'delete-client': false }));
     }
   };
 
@@ -786,7 +909,9 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                         <td className="py-3 px-3 text-slate-700 dark:text-slate-300 max-w-[180px] truncate" title={emp.clientCompany}>
                           {emp.clientCompany}
                         </td>
-                        <td className="py-3 px-3 text-slate-500 dark:text-slate-400">{(emp.shift || '').split(' ')[0]}</td>
+                        <td className="py-3 px-3">
+                          {getShiftBadge(emp.shift)}
+                        </td>
                         <td className="py-3 px-3 text-slate-800 dark:text-slate-200 font-semibold">{emp.phone}</td>
                         <td className="py-3 px-3">
                           <span
@@ -800,20 +925,38 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                           </span>
                         </td>
                         <td className="py-3 px-3 text-right">
-                          <button
-                            disabled={!!pendingActions[`status-${emp.id}`]}
-                            onClick={() => toggleEmployeeStatus(emp)}
-                            className="text-[11px] text-sbe-royal dark:text-cyan-400 hover:underline font-semibold disabled:opacity-50 inline-flex items-center gap-1"
-                          >
-                            {pendingActions[`status-${emp.id}`] ? (
-                              <>
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              disabled={!!pendingActions[`status-${emp.id}`]}
+                              onClick={() => toggleEmployeeStatus(emp)}
+                              className="px-2 py-1 rounded-lg bg-slate-100 dark:bg-industrial-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-industrial-700 text-[11px] font-semibold disabled:opacity-50 inline-flex items-center gap-1"
+                              title="Toggle Active / In Reserve Status"
+                            >
+                              {pendingActions[`status-${emp.id}`] ? (
                                 <Loader2 className="w-3 h-3 animate-spin" />
-                                <span>Updating...</span>
+                              ) : (
+                                <span>{emp.status === 'Active' ? 'Reserve' : 'Activate'}</span>
+                              )}
+                            </button>
+                            {!isClientHR && (
+                              <>
+                                <button
+                                  onClick={() => setEditingEmployee(emp)}
+                                  className="p-1.5 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-industrial-800 hover:text-sbe-royal dark:hover:text-cyan-400 transition-colors"
+                                  title="Edit Worker Details"
+                                >
+                                  <Pencil className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  onClick={() => setDeleteConfirmEmp(emp)}
+                                  className="p-1.5 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-red-50 dark:hover:bg-red-950/50 hover:text-red-600 dark:hover:text-red-400 transition-colors"
+                                  title="Delete Worker"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
                               </>
-                            ) : (
-                              <span>Toggle Status</span>
                             )}
-                          </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -871,7 +1014,27 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                       <span className="text-[11px] px-2 py-0.5 rounded bg-blue-100 dark:bg-industrial-800 text-sbe-royal dark:text-sbe-gold font-bold">
                         {cli.logoPlaceholder || (cli.name || 'PLANT').slice(0, 6).toUpperCase()}
                       </span>
-                      <span className="text-emerald-600 dark:text-emerald-400 text-[11px] font-semibold">{cli.contractStatus}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-emerald-600 dark:text-emerald-400 text-[11px] font-semibold">{cli.contractStatus}</span>
+                        {!isClientHR && (
+                          <div className="flex items-center gap-1 ml-2 border-l border-slate-200 dark:border-white/10 pl-2">
+                            <button
+                              onClick={() => setEditingClient(cli)}
+                              className="p-1 rounded text-slate-500 hover:text-sbe-royal dark:hover:text-cyan-400 hover:bg-slate-200 dark:hover:bg-industrial-800 transition-colors"
+                              title="Edit Client Company"
+                            >
+                              <Pencil className="w-3 h-3" />
+                            </button>
+                            <button
+                              onClick={() => setDeleteConfirmClient(cli)}
+                              className="p-1 rounded text-slate-500 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/50 transition-colors"
+                              title="Delete Client Company"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     </div>
                     <div>
                       <h4 className="text-slate-900 dark:text-white font-bold text-sm">{cli.name}</h4>
@@ -1199,18 +1362,33 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                 </div>
               </div>
 
-              <div>
-                <label className="text-slate-500 block mb-1">Assign to Client Plant</label>
-                <select
-                  value={newEmployee.clientCompany}
-                  onChange={(e) => setNewEmployee({ ...newEmployee, clientCompany: e.target.value })}
-                  className="w-full bg-slate-50 dark:bg-industrial-950 border border-slate-200 dark:border-white/10 rounded-xl p-2 text-slate-900 dark:text-white"
-                >
-                  {clients.map(c => (
-                    <option key={c.id} value={c.name}>{c.name}</option>
-                  ))}
-                  <option value="Reserve Pool / Hot Standby">Reserve Pool / Hot Standby (Thandavpura)</option>
-                </select>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-slate-500 block mb-1">Assign to Client Plant</label>
+                  <select
+                    value={newEmployee.clientCompany}
+                    onChange={(e) => setNewEmployee({ ...newEmployee, clientCompany: e.target.value })}
+                    className="w-full bg-slate-50 dark:bg-industrial-950 border border-slate-200 dark:border-white/10 rounded-xl p-2 text-slate-900 dark:text-white"
+                  >
+                    {clients.map(c => (
+                      <option key={c.id} value={c.name}>{c.name}</option>
+                    ))}
+                    <option value="Reserve Pool / Hot Standby">Reserve Pool / Hot Standby (Thandavpura)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-slate-500 block mb-1">Assigned Shift *</label>
+                  <select
+                    value={newEmployee.shift}
+                    onChange={(e) => setNewEmployee({ ...newEmployee, shift: e.target.value })}
+                    className="w-full bg-slate-50 dark:bg-industrial-950 border border-slate-200 dark:border-white/10 rounded-xl p-2 text-slate-900 dark:text-white"
+                  >
+                    <option value="Shift A (06:00 - 14:00)">Shift A (06:00 - 14:00)</option>
+                    <option value="Shift B (14:00 - 22:00)">Shift B (14:00 - 22:00)</option>
+                    <option value="Shift C (22:00 - 06:00 Nocturnal)">Shift C (22:00 - 06:00 Nocturnal)</option>
+                    <option value="General Duty (08:30 - 17:30)">General Duty (08:30 - 17:30)</option>
+                  </select>
+                </div>
               </div>
 
               <div className="flex gap-3 pt-3">
@@ -1383,6 +1561,371 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {/* Edit Employee Modal */}
+      {editingEmployee && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 dark:bg-black/80 backdrop-blur-md animate-fadeIn">
+          <div className="bg-white dark:bg-industrial-900 rounded-3xl border border-slate-200 dark:border-white/20 p-6 sm:p-8 max-w-lg w-full space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-200 dark:border-white/10">
+              <h3 className="text-xl font-bold font-display text-slate-900 dark:text-white">
+                Edit Worker: {editingEmployee.name} ({editingEmployee.id})
+              </h3>
+              <button
+                onClick={() => setEditingEmployee(null)}
+                className="text-slate-400 hover:text-slate-700 dark:hover:text-white p-1"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <form onSubmit={handleUpdateEmployee} className="space-y-3 text-xs font-mono">
+              <div>
+                <label className="text-slate-500 block mb-1">Worker Full Name *</label>
+                <input
+                  type="text"
+                  required
+                  value={editingEmployee.name}
+                  onChange={(e) => setEditingEmployee({ ...editingEmployee, name: e.target.value })}
+                  className="w-full bg-slate-50 dark:bg-industrial-950 border border-slate-200 dark:border-white/10 rounded-xl p-2.5 text-slate-900 dark:text-white"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-slate-500 block mb-1">Native State</label>
+                  <select
+                    value={editingEmployee.nativeState}
+                    onChange={(e) => setEditingEmployee({ ...editingEmployee, nativeState: e.target.value })}
+                    className="w-full bg-slate-50 dark:bg-industrial-950 border border-slate-200 dark:border-white/10 rounded-xl p-2 text-slate-900 dark:text-white"
+                  >
+                    <option>Uttar Pradesh</option>
+                    <option>Bihar</option>
+                    <option>Jharkhand</option>
+                    <option>Karnataka</option>
+                    <option>Other</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-slate-500 block mb-1">Native District</label>
+                  <input
+                    type="text"
+                    value={editingEmployee.nativeDistrict || ''}
+                    onChange={(e) => setEditingEmployee({ ...editingEmployee, nativeDistrict: e.target.value })}
+                    className="w-full bg-slate-50 dark:bg-industrial-950 border border-slate-200 dark:border-white/10 rounded-xl p-2 text-slate-900 dark:text-white"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-slate-500 block mb-1">Role / Skill Category</label>
+                  <select
+                    value={editingEmployee.role}
+                    onChange={(e) => setEditingEmployee({ ...editingEmployee, role: e.target.value })}
+                    className="w-full bg-slate-50 dark:bg-industrial-950 border border-slate-200 dark:border-white/10 rounded-xl p-2 text-slate-900 dark:text-white"
+                  >
+                    <option>Assembly Line Operator</option>
+                    <option>Machine Helper</option>
+                    <option>FMCG Packer</option>
+                    <option>Heavy Loader</option>
+                    <option>Material Handler</option>
+                    <option>Yard Specialist</option>
+                    <option>Housekeeping &amp; Utility</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-slate-500 block mb-1">Mobile Phone *</label>
+                  <input
+                    type="tel"
+                    required
+                    value={editingEmployee.phone}
+                    onChange={(e) => setEditingEmployee({ ...editingEmployee, phone: e.target.value })}
+                    className="w-full bg-slate-50 dark:bg-industrial-950 border border-slate-200 dark:border-white/10 rounded-xl p-2 text-slate-900 dark:text-white"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-slate-500 block mb-1">Assigned Shift *</label>
+                  <select
+                    value={editingEmployee.shift}
+                    onChange={(e) => setEditingEmployee({ ...editingEmployee, shift: e.target.value })}
+                    className="w-full bg-slate-50 dark:bg-industrial-950 border border-slate-200 dark:border-white/10 rounded-xl p-2 text-slate-900 dark:text-white"
+                  >
+                    <option value="Shift A (06:00 - 14:00)">Shift A (06:00 - 14:00)</option>
+                    <option value="Shift B (14:00 - 22:00)">Shift B (14:00 - 22:00)</option>
+                    <option value="Shift C (22:00 - 06:00 Nocturnal)">Shift C (22:00 - 06:00 Nocturnal)</option>
+                    <option value="General Duty (08:30 - 17:30)">General Duty (08:30 - 17:30)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-slate-500 block mb-1">Deployment Status</label>
+                  <select
+                    value={editingEmployee.status}
+                    onChange={(e) => setEditingEmployee({ ...editingEmployee, status: e.target.value as any })}
+                    className="w-full bg-slate-50 dark:bg-industrial-950 border border-slate-200 dark:border-white/10 rounded-xl p-2 text-slate-900 dark:text-white"
+                  >
+                    <option value="Active">Active</option>
+                    <option value="In Reserve">In Reserve</option>
+                    <option value="On Leave">On Leave</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-slate-500 block mb-1">Assign to Client Plant</label>
+                <select
+                  value={editingEmployee.clientCompany}
+                  onChange={(e) => setEditingEmployee({ ...editingEmployee, clientCompany: e.target.value })}
+                  className="w-full bg-slate-50 dark:bg-industrial-950 border border-slate-200 dark:border-white/10 rounded-xl p-2 text-slate-900 dark:text-white"
+                >
+                  {clients.map(c => (
+                    <option key={c.id} value={c.name}>{c.name}</option>
+                  ))}
+                  <option value="Reserve Pool / Hot Standby">Reserve Pool / Hot Standby (Thandavpura)</option>
+                </select>
+              </div>
+
+              <div className="flex gap-3 pt-3">
+                <button
+                  type="button"
+                  onClick={() => setEditingEmployee(null)}
+                  className="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-industrial-950 border border-slate-200 dark:border-white/10 text-slate-700 dark:text-slate-300 font-semibold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={!!pendingActions['edit-employee']}
+                  className="flex-1 py-2.5 rounded-xl bg-sbe-royal text-white font-bold shadow disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {pendingActions['edit-employee'] ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Updating...</span>
+                    </>
+                  ) : (
+                    <span>Save Changes</span>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Employee Confirmation Modal */}
+      {deleteConfirmEmp && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 dark:bg-black/80 backdrop-blur-md animate-fadeIn">
+          <div className="bg-white dark:bg-industrial-900 rounded-3xl border border-red-200 dark:border-red-900/40 p-6 sm:p-8 max-w-md w-full space-y-4 shadow-2xl">
+            <div className="w-12 h-12 rounded-2xl bg-red-100 dark:bg-red-950/60 border border-red-200 dark:border-red-800/60 flex items-center justify-center text-red-600 dark:text-red-400 mx-auto">
+              <Trash2 className="w-6 h-6" />
+            </div>
+            <div className="text-center space-y-2">
+              <h3 className="text-lg font-bold font-display text-slate-900 dark:text-white">
+                Delete Worker Record
+              </h3>
+              <p className="text-xs text-slate-600 dark:text-slate-400 font-mono leading-relaxed">
+                Are you sure you want to remove <strong className="text-slate-900 dark:text-white">{deleteConfirmEmp.name}</strong> ({deleteConfirmEmp.id}) from the SBE workforce roster? This action will permanently remove the employee.
+              </p>
+            </div>
+            <div className="flex gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setDeleteConfirmEmp(null)}
+                className="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-industrial-950 border border-slate-200 dark:border-white/10 text-slate-700 dark:text-slate-300 text-xs font-semibold"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={!!pendingActions['delete-employee']}
+                onClick={handleDeleteEmployee}
+                className="flex-1 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold shadow disabled:opacity-50 flex items-center justify-center gap-1.5"
+              >
+                {pendingActions['delete-employee'] ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Deleting...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Confirm Delete</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Client Modal */}
+      {editingClient && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 dark:bg-black/80 backdrop-blur-md animate-fadeIn">
+          <div className="bg-white dark:bg-industrial-900 rounded-3xl border border-slate-200 dark:border-white/20 p-6 sm:p-8 max-w-lg w-full space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-200 dark:border-white/10">
+              <h3 className="text-xl font-bold font-display text-slate-900 dark:text-white">
+                Edit Client: {editingClient.name} ({editingClient.id})
+              </h3>
+              <button
+                onClick={() => setEditingClient(null)}
+                className="text-slate-400 hover:text-slate-700 dark:hover:text-white p-1"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <form onSubmit={handleUpdateClient} className="space-y-3 text-xs font-mono">
+              <div>
+                <label className="text-slate-500 block mb-1">Plant / Corporate Name *</label>
+                <input
+                  type="text"
+                  required
+                  value={editingClient.name}
+                  onChange={(e) => setEditingClient({ ...editingClient, name: e.target.value })}
+                  className="w-full bg-slate-50 dark:bg-industrial-950 border border-slate-200 dark:border-white/10 rounded-xl p-2.5 text-slate-900 dark:text-white"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-slate-500 block mb-1">Industrial Cluster</label>
+                  <input
+                    type="text"
+                    value={editingClient.location}
+                    onChange={(e) => setEditingClient({ ...editingClient, location: e.target.value })}
+                    className="w-full bg-slate-50 dark:bg-industrial-950 border border-slate-200 dark:border-white/10 rounded-xl p-2 text-slate-900 dark:text-white"
+                  />
+                </div>
+                <div>
+                  <label className="text-slate-500 block mb-1">Allocated Headcount</label>
+                  <input
+                    type="number"
+                    value={editingClient.assignedWorkers}
+                    onChange={(e) => setEditingClient({ ...editingClient, assignedWorkers: Number(e.target.value) })}
+                    className="w-full bg-slate-50 dark:bg-industrial-950 border border-slate-200 dark:border-white/10 rounded-xl p-2 text-slate-900 dark:text-white"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-slate-500 block mb-1">Contact Person *</label>
+                  <input
+                    type="text"
+                    required
+                    value={editingClient.contactPerson}
+                    onChange={(e) => setEditingClient({ ...editingClient, contactPerson: e.target.value })}
+                    className="w-full bg-slate-50 dark:bg-industrial-950 border border-slate-200 dark:border-white/10 rounded-xl p-2 text-slate-900 dark:text-white"
+                  />
+                </div>
+                <div>
+                  <label className="text-slate-500 block mb-1">Contact Mobile</label>
+                  <input
+                    type="tel"
+                    value={editingClient.contactPhone || ''}
+                    onChange={(e) => setEditingClient({ ...editingClient, contactPhone: e.target.value })}
+                    className="w-full bg-slate-50 dark:bg-industrial-950 border border-slate-200 dark:border-white/10 rounded-xl p-2 text-slate-900 dark:text-white"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-slate-500 block mb-1">Client HR Email</label>
+                  <input
+                    type="email"
+                    value={editingClient.contactEmail || ''}
+                    onChange={(e) => setEditingClient({ ...editingClient, contactEmail: e.target.value })}
+                    className="w-full bg-slate-50 dark:bg-industrial-950 border border-slate-200 dark:border-white/10 rounded-xl p-2 text-slate-900 dark:text-white"
+                  />
+                </div>
+                <div>
+                  <label className="text-slate-500 block mb-1">Contract Status</label>
+                  <select
+                    value={editingClient.contractStatus}
+                    onChange={(e) => setEditingClient({ ...editingClient, contractStatus: e.target.value })}
+                    className="w-full bg-slate-50 dark:bg-industrial-950 border border-slate-200 dark:border-white/10 rounded-xl p-2 text-slate-900 dark:text-white"
+                  >
+                    <option value="Active">Active</option>
+                    <option value="Under Review">Under Review</option>
+                    <option value="Expired">Expired</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-3">
+                <button
+                  type="button"
+                  onClick={() => setEditingClient(null)}
+                  className="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-industrial-950 border border-slate-200 dark:border-white/10 text-slate-700 dark:text-slate-300 font-semibold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={!!pendingActions['edit-client']}
+                  className="flex-1 py-2.5 rounded-xl bg-sbe-royal text-white font-bold shadow disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {pendingActions['edit-client'] ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Updating...</span>
+                    </>
+                  ) : (
+                    <span>Save Changes</span>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Client Confirmation Modal */}
+      {deleteConfirmClient && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 dark:bg-black/80 backdrop-blur-md animate-fadeIn">
+          <div className="bg-white dark:bg-industrial-900 rounded-3xl border border-red-200 dark:border-red-900/40 p-6 sm:p-8 max-w-md w-full space-y-4 shadow-2xl">
+            <div className="w-12 h-12 rounded-2xl bg-red-100 dark:bg-red-950/60 border border-red-200 dark:border-red-800/60 flex items-center justify-center text-red-600 dark:text-red-400 mx-auto">
+              <Trash2 className="w-6 h-6" />
+            </div>
+            <div className="text-center space-y-2">
+              <h3 className="text-lg font-bold font-display text-slate-900 dark:text-white">
+                Delete Client Plant
+              </h3>
+              <p className="text-xs text-slate-600 dark:text-slate-400 font-mono leading-relaxed">
+                Are you sure you want to remove <strong className="text-slate-900 dark:text-white">{deleteConfirmClient.name}</strong> ({deleteConfirmClient.id}) from the client roster? This action will permanently remove the client company.
+              </p>
+            </div>
+            <div className="flex gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setDeleteConfirmClient(null)}
+                className="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-industrial-950 border border-slate-200 dark:border-white/10 text-slate-700 dark:text-slate-300 text-xs font-semibold"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={!!pendingActions['delete-client']}
+                onClick={handleDeleteClient}
+                className="flex-1 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold shadow disabled:opacity-50 flex items-center justify-center gap-1.5"
+              >
+                {pendingActions['delete-client'] ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Deleting...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Confirm Delete</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}
