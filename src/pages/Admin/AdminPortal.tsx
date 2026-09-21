@@ -1,17 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { EmployeeRecord, getWorkforceStats } from '../../data/employees';
 import { ClientCompany } from '../../data/clients';
-import { COMPANY_DETAILS } from '../../data/company';
 import { 
   fetchClients, 
   createClient, 
-  updateClient, 
-  deleteClient, 
   regenerateClientPassword,
   fetchEmployees, 
   createEmployee, 
   updateEmployee, 
-  deleteEmployee,
   fetchAttendance, 
   toggleAttendance as apiToggleAttendance 
 } from '../../services/api';
@@ -34,9 +30,18 @@ import {
   KeyRound,
   Copy,
   RefreshCw,
-  Key,
-  Loader2
+  Key
 } from 'lucide-react';
+
+// Helper to generate a strong 16-character password
+const generateStrongPassword = (length = 16) => {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%^&*()_+-=[]{}|';
+  let pass = '';
+  for (let i = 0; i < length; i++) {
+    pass += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return pass;
+};
 
 interface AdminPortalProps {
   userRole: 'public' | 'client_hr' | 'admin';
@@ -58,7 +63,6 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   const [employees, setEmployees] = useState<EmployeeRecord[]>([]);
   const [clients, setClients] = useState<ClientCompany[]>([]);
   const [employeeSearch, setEmployeeSearch] = useState('');
-  const [isLoadingData, setIsLoadingData] = useState(false);
 
   // Add Employee Modal State
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -78,16 +82,6 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     supervisorName: 'M. Ramesh',
   });
 
-  // Helper to generate a strong 16-character password
-  const generateStrongPassword = (length = 16) => {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%^&*()_+-=[]{}|';
-    let pass = '';
-    for (let i = 0; i < length; i++) {
-      pass += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    return pass;
-  };
-
   // Add Client Modal State
   const [isAddClientModalOpen, setIsAddClientModalOpen] = useState(false);
   const [copiedPasswordId, setCopiedPasswordId] = useState<string | null>(null);
@@ -102,36 +96,42 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     contractStatus: 'Active',
     logoPlaceholder: 'NEW-PLANT',
     deploymentSince: '2026',
-    password: generateStrongPassword(16),
+    password: '',
     activeShifts: ['Shift A (06:00 - 14:00)', 'Shift B (14:00 - 22:00)'],
   });
+
+  const openAddClientModal = () => {
+    setNewClient(prev => ({
+      ...prev,
+      password: prev.password || generateStrongPassword(16),
+    }));
+    setIsAddClientModalOpen(true);
+  };
 
   // Attendance simulation state
   const [attendanceRecords, setAttendanceRecords] = useState<{ [id: string]: 'Present' | 'Absent' | 'Shift Swapped' }>({});
 
-  // Load data from backend on login or refresh
-  const loadData = async () => {
-    setIsLoadingData(true);
-    try {
-      const [clientsData, employeesData, attendanceData] = await Promise.all([
-        fetchClients().catch(() => []),
-        fetchEmployees().catch(() => []),
-        fetchAttendance().catch(() => ({})),
-      ]);
-      setClients(clientsData || []);
-      setEmployees(employeesData || []);
-      setAttendanceRecords(attendanceData || {});
-    } catch (err) {
-      console.error('Failed to load data from backend:', err);
-    } finally {
-      setIsLoadingData(false);
-    }
-  };
-
   useEffect(() => {
-    if (authSession) {
-      loadData();
-    }
+    if (!authSession) return;
+    let isCancelled = false;
+
+    Promise.all([
+      fetchClients().catch(() => []),
+      fetchEmployees().catch(() => []),
+      fetchAttendance().catch(() => ({})),
+    ]).then(([clientsData, employeesData, attendanceData]) => {
+      if (!isCancelled) {
+        setClients(clientsData || []);
+        setEmployees(employeesData || []);
+        setAttendanceRecords(attendanceData || {});
+      }
+    }).catch((err) => {
+      console.error('Failed to load data from backend:', err);
+    });
+
+    return () => {
+      isCancelled = true;
+    };
   }, [authSession]);
 
   // If not authenticated, require login!
@@ -458,112 +458,15 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                     <div>
                       <p className="text-slate-900 dark:text-white font-bold">{c.name}</p>
                       <p className="text-[11px] text-slate-500">{c.location}</p>
-          {/* Key Metrics Cards */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 font-mono text-xs">
-            <div className="bg-white dark:bg-industrial-900 rounded-3xl p-5 border border-slate-200 dark:border-white/10 space-y-2 shadow-sm">
-              <span className="text-slate-500 dark:text-slate-400 block">Total Workforce on Roll</span>
-              <div className="flex items-baseline gap-2">
-                <span className="text-3xl font-bold font-display text-slate-900 dark:text-white">{stats.totalOnRoll}</span>
-                <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold font-mono">100% ESI/EPF</span>
-              </div>
-              <span className="text-[11px] text-slate-500">Karnataka labour licensed</span>
-            </div>
-
-            <div className="bg-white dark:bg-industrial-900 rounded-3xl p-5 border border-slate-200 dark:border-white/10 space-y-2 shadow-sm">
-              <span className="text-slate-500 dark:text-slate-400 block">Active Deployed Shifts</span>
-              <div className="flex items-baseline gap-2">
-                <span className="text-3xl font-bold font-display text-emerald-600 dark:text-emerald-400">{stats.activeCount}</span>
-                <span className="text-[10px] text-slate-400 font-mono">Workers On Line</span>
-              </div>
-              <span className="text-[11px] text-slate-500">Across Mysuru industrial clusters</span>
-            </div>
-
-            <div className="bg-white dark:bg-industrial-900 rounded-3xl p-5 border border-slate-200 dark:border-white/10 space-y-2 shadow-sm">
-              <span className="text-slate-500 dark:text-slate-400 block">Hot Standby Reserve Pool</span>
-              <div className="flex items-baseline gap-2">
-                <span className="text-3xl font-bold font-display text-amber-500 dark:text-sbe-gold">{stats.inReserveCount}</span>
-                <span className="text-[10px] text-amber-600 dark:text-amber-400 font-mono">&lt; 45 min dispatch</span>
-              </div>
-              <span className="text-[11px] text-slate-500">Ready for line replacement</span>
-            </div>
-
-            <div className="bg-white dark:bg-industrial-900 rounded-3xl p-5 border border-slate-200 dark:border-white/10 space-y-2 shadow-sm">
-              <span className="text-slate-500 dark:text-slate-400 block">Client Companies Mapped</span>
-              <div className="flex items-baseline gap-2">
-                <span className="text-3xl font-bold font-display text-sbe-royal dark:text-cyan-400">{clients.length}</span>
-                <span className="text-[10px] text-slate-400 font-mono">Automotive &amp; FMCG</span>
-              </div>
-              <span className="text-[11px] text-slate-500">TVS, Hector, South Bottlers...</span>
-            </div>
-          </div>
-
-          {/* Quick Actions & Deployment Distribution */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Native State Sourcing Diversity */}
-            <div className="lg:col-span-2 bg-white dark:bg-industrial-900 rounded-3xl p-6 border border-slate-200 dark:border-white/10 space-y-4 shadow-sm font-mono text-xs">
-              <div className="flex justify-between items-center">
-                <h3 className="text-base font-bold font-display text-slate-900 dark:text-white">Interstate Workforce Diversity (Migrant Supply Corridor)</h3>
-                <span className="text-[11px] text-slate-500">Police &amp; Aadhaar Verified</span>
-              </div>
-              <p className="text-slate-600 dark:text-slate-400 font-sans text-xs">
-                SBE operates direct recruitment pipelines across 5 North and Central Indian states, guaranteeing continuous replacement manpower with zero local labor union disruption.
-              </p>
-
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 pt-2">
-                {Object.entries(stats.stateDistribution).map(([state, count]) => (
-                  <div key={state} className="p-3.5 rounded-2xl bg-slate-50 dark:bg-industrial-950 border border-slate-200 dark:border-white/5 flex items-center justify-between">
-                    <div>
-                      <span className="text-slate-500 block text-[10px] uppercase font-bold">{state}</span>
-                      <strong className="text-slate-900 dark:text-white text-base">{count} Workers</strong>
                     </div>
-                    <span className="text-sbe-royal dark:text-sbe-gold font-bold text-sm">
-                      {stats.totalOnRoll > 0 ? Math.round((count / stats.totalOnRoll) * 100) : 0}%
-                    </span>
+                    <div className="text-right">
+                      <span className="text-sbe-royal dark:text-sbe-gold font-bold text-sm block">
+                        {c.assignedWorkers} Workers
+                      </span>
+                      <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold">{c.contractStatus}</span>
+                    </div>
                   </div>
                 ))}
-              </div>
-            </div>
-
-            {/* Quick Actions Widget */}
-            <div className="bg-white dark:bg-industrial-900 rounded-3xl p-6 border border-slate-200 dark:border-white/10 space-y-4 shadow-sm font-mono text-xs">
-              <h3 className="text-base font-bold font-display text-slate-900 dark:text-white">Administrative Actions</h3>
-              <div className="space-y-2.5">
-                {!isClientHR && (
-                  <button
-                    onClick={() => setIsAddModalOpen(true)}
-                    className="w-full p-3.5 rounded-2xl bg-blue-50 dark:bg-sbe-royal/20 hover:bg-blue-100 dark:hover:bg-sbe-royal/30 text-sbe-royal dark:text-cyan-300 font-bold flex items-center justify-between border border-blue-200 dark:border-sbe-royal/30 transition-all"
-                  >
-                    <span className="flex items-center gap-2">
-                      <Plus className="w-4 h-4" />
-                      <span>Enroll New Worker</span>
-                    </span>
-                    <span className="text-[10px] bg-white dark:bg-industrial-900 px-2 py-0.5 rounded border border-blue-200 dark:border-white/10">Quick Form</span>
-                  </button>
-                )}
-
-                {!isClientHR && (
-                  <button
-                    onClick={() => setIsAddClientModalOpen(true)}
-                    className="w-full p-3.5 rounded-2xl bg-amber-50 dark:bg-amber-500/10 hover:bg-amber-100 dark:hover:bg-amber-500/20 text-amber-800 dark:text-sbe-gold font-bold flex items-center justify-between border border-amber-200 dark:border-amber-500/30 transition-all"
-                  >
-                    <span className="flex items-center gap-2">
-                      <Building2 className="w-4 h-4" />
-                      <span>Register Client Plant</span>
-                    </span>
-                    <span className="text-[10px] bg-white dark:bg-industrial-900 px-2 py-0.5 rounded border border-amber-200 dark:border-white/10">Client Portal</span>
-                  </button>
-                )}
-
-                <button
-                  onClick={() => setActiveAdminTab('attendance')}
-                  className="w-full p-3.5 rounded-2xl bg-emerald-50 dark:bg-emerald-500/10 hover:bg-emerald-100 dark:hover:bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 font-bold flex items-center justify-between border border-emerald-200 dark:border-emerald-500/30 transition-all"
-                >
-                  <span className="flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4" />
-                    <span>Live Shift Roll Call</span>
-                  </span>
-                  <span className="text-[10px] bg-white dark:bg-industrial-900 px-2 py-0.5 rounded border border-emerald-200 dark:border-white/10">3 Shifts</span>
-                </button>
               </div>
             </div>
           </div>
@@ -688,7 +591,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                 <p className="text-xs text-slate-500 dark:text-slate-400 font-mono">Manage mapped contracts, allocated workforce quotas, and site coordinators.</p>
               </div>
               <button
-                onClick={() => setIsAddClientModalOpen(true)}
+                onClick={openAddClientModal}
                 className="px-4 py-2 rounded-xl bg-sbe-royal hover:bg-blue-700 text-white font-bold text-xs flex items-center gap-1.5 shadow"
               >
                 <Plus className="w-4 h-4" />
@@ -703,7 +606,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                 <p className="text-sm font-bold text-slate-700 dark:text-slate-300">No client plants registered yet.</p>
                 <p className="text-xs text-slate-500 font-mono">Click "Add Client Plant" to register your first partner factory.</p>
                 <button
-                  onClick={() => setIsAddClientModalOpen(true)}
+                  onClick={openAddClientModal}
                   className="mt-3 px-4 py-2 rounded-xl bg-sbe-royal hover:bg-blue-700 text-white font-bold text-xs inline-flex items-center gap-1.5 shadow"
                 >
                   <Plus className="w-4 h-4" />

@@ -4,11 +4,7 @@ import {
   ShieldCheck, 
   FileText, 
   Award, 
-  Calendar, 
   CheckCircle2, 
-  Building2, 
-  Download, 
-  ExternalLink,
   ChevronRight
 } from 'lucide-react';
 

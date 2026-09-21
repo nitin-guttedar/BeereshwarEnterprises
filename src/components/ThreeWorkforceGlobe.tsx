@@ -9,7 +9,6 @@ interface ThreeWorkforceGlobeProps {
 export const ThreeWorkforceGlobe: React.FC<ThreeWorkforceGlobeProps> = ({ interactive = true }) => {
   const mountRef = useRef<HTMLDivElement>(null);
   const [activePipeline, setActivePipeline] = useState<string>('UP ➔ Mysore Automotive Hub');
-  const [isHovered, setIsHovered] = useState<boolean>(false);
 
   useEffect(() => {
     const currentMount = mountRef.current;
@@ -300,8 +299,6 @@ export const ThreeWorkforceGlobe: React.FC<ThreeWorkforceGlobeProps> = ({ intera
   return (
     <div 
       className="relative w-full h-full min-h-[460px] lg:min-h-[580px] flex items-center justify-center overflow-hidden rounded-3xl"
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
     >
       {/* 3D WebGL Canvas Container */}
       <div ref={mountRef} className="absolute inset-0 w-full h-full cursor-grab active:cursor-grabbing" />

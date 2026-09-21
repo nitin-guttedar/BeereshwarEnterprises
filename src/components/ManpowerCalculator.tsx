@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Calculator, Users, Clock, Send, CheckCircle2 } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import { submitProposal } from '../services/api';
 
 interface ManpowerCalculatorProps {
   onSuccessSubmit?: (details: any) => void;
@@ -38,10 +39,9 @@ export const ManpowerCalculator: React.FC<ManpowerCalculatorProps> = ({ onSucces
         spread: 70,
         origin: { y: 0.7 }
       });
-    } catch (err) {}
+    } catch {}
 
     try {
-      const { submitProposal } = await import('../services/api');
       await submitProposal({
         companyName,
         contactName,

@@ -11,7 +11,6 @@ import { DirectoryPage } from './pages/DirectoryPage';
 import { BlogPage } from './pages/BlogPage';
 import { ContactPage } from './pages/ContactPage';
 import { AdminPortal } from './pages/Admin/AdminPortal';
-import { COMPANY_DETAILS } from './data/company';
 
 export function App() {
   const [currentTab, setCurrentTab] = useState<string>('home');
@@ -23,7 +22,7 @@ export function App() {
     if (saved) {
       try {
         return JSON.parse(saved);
-      } catch (e) {
+      } catch {
         return null;
       }
     }

@@ -5,11 +5,8 @@ import {
   BookOpen, 
   Calendar, 
   Clock, 
-  Tag, 
   ArrowRight, 
-  Search, 
-  Bookmark, 
-  Sparkles 
+  Search 
 } from 'lucide-react';
 
 export const BlogPage: React.FC = () => {

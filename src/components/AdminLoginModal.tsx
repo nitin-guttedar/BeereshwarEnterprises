@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Shield, Lock, Mail, Key, User, CheckCircle2, AlertCircle, X, Building, ArrowRight } from 'lucide-react';
+import { Shield, Lock, Mail, Key, AlertCircle, X, Building, ArrowRight } from 'lucide-react';
 import { COMPANY_DETAILS } from '../data/company';
+import { loginUser } from '../services/api';
 
 interface AdminLoginModalProps {
   isOpen: boolean;
@@ -27,7 +28,6 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
     setIsLoading(true);
 
     try {
-      const { loginUser } = await import('../services/api');
       const response = await loginUser(email.trim(), password);
 
       setIsLoading(false);

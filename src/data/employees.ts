@@ -3,7 +3,7 @@ export interface EmployeeRecord {
   name: string;
   photo: string;
   role: 'Assembly Line Operator' | 'Machine Helper' | 'FMCG Packer' | 'Heavy Loader' | 'Housekeeping & Utility' | 'Yard Specialist' | 'Material Handler';
-  nativeState: 'Uttar Pradesh' | 'Bihar' | 'Jharkhand' | 'Other';
+  nativeState: 'Uttar Pradesh' | 'Bihar' | 'Jharkhand' | 'Karnataka' | 'Other' | string;
   nativeDistrict: string;
   clientCompany: string;
   clientLocation: string;
@@ -310,27 +310,36 @@ export const INITIAL_EMPLOYEES: EmployeeRecord[] = [
 
 // Helper to calculate summary statistics
 export function getWorkforceStats(list: EmployeeRecord[]) {
-  const total = 500 + list.length; // Visualized 500+ scale
+  const totalOnRoll = list.length;
   const activeCount = list.filter(e => e.status === 'Active').length;
-  const reserveCount = list.filter(e => e.status === 'In Reserve').length;
+  const inReserveCount = list.filter(e => e.status === 'In Reserve').length;
   const onLeaveCount = list.filter(e => e.status === 'On Leave').length;
 
+  const stateDistribution: Record<string, number> = {};
+  list.forEach(e => {
+    stateDistribution[e.nativeState] = (stateDistribution[e.nativeState] || 0) + 1;
+  });
+
   return {
-    totalOnRoll: 520,
-    activeDeployed: 485,
-    reserveStandby: 35,
+    totalOnRoll,
+    activeCount,
+    activeDeployed: activeCount,
+    inReserveCount,
+    reserveStandby: inReserveCount,
+    onLeaveCount,
     avgAttendancePercent: 97.4,
+    stateDistribution,
     statesCount: {
-      up: 240,
-      bihar: 180,
-      jharkhand: 85,
-      other: 15
+      up: stateDistribution['Uttar Pradesh'] || 0,
+      bihar: stateDistribution['Bihar'] || 0,
+      jharkhand: stateDistribution['Jharkhand'] || 0,
+      other: stateDistribution['Other'] || 0
     },
     shiftsActive: {
-      shiftA: 210,
-      shiftB: 185,
-      shiftC: 90,
-      generalDay: 35
+      shiftA: list.filter(e => e.shift?.includes('Shift A')).length,
+      shiftB: list.filter(e => e.shift?.includes('Shift B')).length,
+      shiftC: list.filter(e => e.shift?.includes('Shift C')).length,
+      generalDay: list.filter(e => e.shift?.includes('General Day')).length
     }
   };
 }

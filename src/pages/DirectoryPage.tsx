@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { EmployeeRecord, INITIAL_EMPLOYEES, getWorkforceStats } from '../data/employees';
+import { EmployeeRecord, INITIAL_EMPLOYEES } from '../data/employees';
 import { EmployeeModal } from '../components/EmployeeModal';
 import { COMPANY_DETAILS } from '../data/company';
 import { 
@@ -71,8 +71,6 @@ export const DirectoryPage: React.FC<DirectoryPageProps> = ({
       return matchesSearch && matchesState && matchesRole && matchesCompany && matchesStatus;
     });
   }, [searchQuery, selectedState, selectedRole, selectedCompany, selectedStatus]);
-
-  const stats = getWorkforceStats(INITIAL_EMPLOYEES);
 
   // CSV Export
   const handleExportCSV = () => {

@@ -4,15 +4,14 @@ import {
   Phone, 
   Mail, 
   MapPin, 
-  Clock, 
   Send, 
   CheckCircle2, 
   PhoneCall, 
-  Users,
   Award,
   FileCheck
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import { submitProposal } from '../services/api';
 
 export const ContactPage: React.FC = () => {
   const [formData, setFormData] = useState({
@@ -41,10 +40,9 @@ export const ContactPage: React.FC = () => {
     setIsSubmitted(true);
     try {
       confetti({ particleCount: 70, spread: 80, origin: { y: 0.6 } });
-    } catch (e) {}
+    } catch {}
 
     try {
-      const { submitProposal } = await import('../services/api');
       await submitProposal({
         companyName: formData.companyName,
         contactName: formData.contactPerson,

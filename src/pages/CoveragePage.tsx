@@ -1,6 +1,6 @@
 import React from 'react';
-import { CoverageRadar, COVERAGE_HUBS } from '../components/CoverageRadar';
-import { COMPANY_DETAILS } from '../data/company';
+import { CoverageRadar } from '../components/CoverageRadar';
+import { COVERAGE_HUBS } from '../data/coverage';
 import { 
   MapPin, 
   Navigation, 

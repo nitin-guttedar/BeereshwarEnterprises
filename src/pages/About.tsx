@@ -10,7 +10,6 @@ import {
   Users, 
   FileText, 
   TrendingUp, 
-  Award, 
   Home as HomeIcon,
   CheckCircle2,
   HeartHandshake
@@ -20,7 +19,7 @@ interface AboutProps {
   setCurrentTab: (tab: string) => void;
 }
 
-export const About: React.FC<AboutProps> = ({ setCurrentTab }) => {
+export const About: React.FC<AboutProps> = ({ setCurrentTab: _setCurrentTab }) => {
   return (
     <div className="space-y-20 pb-16">
       {/* Page Header */}
