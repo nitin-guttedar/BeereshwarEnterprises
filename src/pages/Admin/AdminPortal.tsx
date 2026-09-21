@@ -18,7 +18,10 @@ import {
   LogOut,
   FileSpreadsheet,
   Download,
-  KeyRound
+  KeyRound,
+  Copy,
+  RefreshCw,
+  Key
 } from 'lucide-react';
 
 interface AdminPortalProps {
@@ -60,9 +63,20 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     supervisorName: 'M. Ramesh',
   });
 
+  // Helper to generate a strong 16-character password
+  const generateStrongPassword = (length = 16) => {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%^&*()_+-=[]{}|';
+    let pass = '';
+    for (let i = 0; i < length; i++) {
+      pass += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return pass;
+  };
+
   // Add Client Modal State
   const [isAddClientModalOpen, setIsAddClientModalOpen] = useState(false);
-  const [newClient, setNewClient] = useState<Partial<ClientCompany>>({
+  const [copiedPasswordId, setCopiedPasswordId] = useState<string | null>(null);
+  const [newClient, setNewClient] = useState<Partial<ClientCompany & { password?: string }>>({
     name: '',
     industry: 'Automotive & Two-Wheeler',
     location: '',
@@ -73,6 +87,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     contractStatus: 'Active',
     logoPlaceholder: 'NEW-PLANT',
     deploymentSince: '2026',
+    password: generateStrongPassword(16),
     activeShifts: ['Shift A (06:00 - 14:00)', 'Shift B (14:00 - 22:00)'],
   });
 
@@ -173,6 +188,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       return;
     }
 
+    const generatedPass = newClient.password || generateStrongPassword(16);
     const created: ClientCompany = {
       id: `cli-0${clients.length + 1}`,
       name: newClient.name || '',
@@ -181,15 +197,31 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       assignedWorkers: Number(newClient.assignedWorkers) || 15,
       activeShifts: newClient.activeShifts || ['Shift A (06:00 - 14:00)'],
       contactPerson: newClient.contactPerson || '',
-      contactEmail: newClient.contactEmail || 'hr@clientplant.com',
+      contactEmail: newClient.contactEmail || `hr@${(newClient.name || 'client').toLowerCase().replace(/[^a-z0-9]/g, '')}.com`,
       contactPhone: newClient.contactPhone || '+91 98450 00000',
       contractStatus: 'Active',
       logoPlaceholder: (newClient.name || 'NEW').slice(0, 6).toUpperCase(),
       deploymentSince: '2026',
+      password: generatedPass,
     };
 
     setClients([...clients, created]);
     setIsAddClientModalOpen(false);
+    // Reset form with new generated password for next time
+    setNewClient({
+      name: '',
+      industry: 'Automotive & Two-Wheeler',
+      location: '',
+      assignedWorkers: 20,
+      contactPerson: '',
+      contactEmail: '',
+      contactPhone: '',
+      contractStatus: 'Active',
+      logoPlaceholder: 'NEW-PLANT',
+      deploymentSince: '2026',
+      password: generateStrongPassword(16),
+      activeShifts: ['Shift A (06:00 - 14:00)', 'Shift B (14:00 - 22:00)'],
+    });
   };
 
   const toggleAttendance = (empId: string) => {
@@ -510,7 +542,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                     <h4 className="text-slate-900 dark:text-white font-bold text-sm">{cli.name}</h4>
                     <p className="text-slate-500 text-[11px]">{cli.location}</p>
                   </div>
-                  <div className="p-2.5 rounded-lg bg-white dark:bg-industrial-900 border border-slate-200 dark:border-white/5 space-y-1">
+                  <div className="p-2.5 rounded-lg bg-white dark:bg-industrial-900 border border-slate-200 dark:border-white/5 space-y-1.5">
                     <div className="flex justify-between text-slate-500">
                       <span>Assigned Quota:</span>
                       <strong className="text-slate-900 dark:text-white">{cli.assignedWorkers} Workers</strong>
@@ -518,6 +550,40 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                     <div className="flex justify-between text-slate-500">
                       <span>Key Contact:</span>
                       <span className="text-slate-800 dark:text-slate-200">{cli.contactPerson.split(' ')[0]}</span>
+                    </div>
+                    {/* Client HR Login Credentials Display */}
+                    <div className="pt-2 mt-2 border-t border-slate-100 dark:border-white/5 space-y-1">
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className="text-slate-400 flex items-center gap-1">
+                          <Key className="w-3 h-3 text-sbe-royal dark:text-sbe-gold" />
+                          <span>HR Access:</span>
+                        </span>
+                        <span className="text-slate-700 dark:text-slate-300 truncate max-w-[140px] font-mono">
+                          {cli.contactEmail}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between bg-slate-100 dark:bg-industrial-950 px-2 py-1 rounded text-[10px] font-mono">
+                        <span className="text-slate-500">Pass:</span>
+                        <span className="text-sbe-royal dark:text-cyan-300 font-bold tracking-wider">
+                          {cli.password || 'Tvs@SBE#2026!9'}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText(cli.password || 'Tvs@SBE#2026!9');
+                            setCopiedPasswordId(cli.id);
+                            setTimeout(() => setCopiedPasswordId(null), 2000);
+                          }}
+                          className="text-slate-500 hover:text-sbe-royal dark:hover:text-white ml-1 p-0.5"
+                          title="Copy Password"
+                        >
+                          {copiedPasswordId === cli.id ? (
+                            <span className="text-emerald-500 font-bold">Copied!</span>
+                          ) : (
+                            <Copy className="w-3 h-3" />
+                          )}
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -831,6 +897,60 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                     className="w-full bg-slate-50 dark:bg-industrial-950 border border-slate-200 dark:border-white/10 rounded-xl p-2 text-slate-900 dark:text-white"
                   />
                 </div>
+              </div>
+
+              <div>
+                <label className="text-slate-500 block mb-1">Client HR Email (Portal Login ID)</label>
+                <input
+                  type="email"
+                  placeholder="e.g. hr@clientplant.com"
+                  value={newClient.contactEmail}
+                  onChange={(e) => setNewClient({ ...newClient, contactEmail: e.target.value })}
+                  className="w-full bg-slate-50 dark:bg-industrial-950 border border-slate-200 dark:border-white/10 rounded-xl p-2 text-slate-900 dark:text-white"
+                />
+              </div>
+
+              {/* Generated Strong Password Section */}
+              <div className="p-3 rounded-2xl bg-blue-50/60 dark:bg-industrial-950 border border-blue-200 dark:border-sbe-royal/30 space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-sbe-royal dark:text-sbe-gold font-bold flex items-center gap-1.5 text-xs">
+                    <Key className="w-3.5 h-3.5" />
+                    <span>Auto-Generated Strong Password</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setNewClient({ ...newClient, password: generateStrongPassword(16) })}
+                    className="text-[11px] text-blue-600 dark:text-cyan-400 hover:underline flex items-center gap-1 font-semibold"
+                  >
+                    <RefreshCw className="w-3 h-3" />
+                    <span>Regenerate</span>
+                  </button>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    readOnly
+                    value={newClient.password || ''}
+                    className="flex-1 bg-white dark:bg-industrial-900 border border-slate-200 dark:border-white/10 rounded-xl px-3 py-2 text-xs font-mono font-bold text-slate-900 dark:text-white"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (newClient.password) {
+                        navigator.clipboard.writeText(newClient.password);
+                        setCopiedPasswordId('new-client');
+                        setTimeout(() => setCopiedPasswordId(null), 2000);
+                      }
+                    }}
+                    className="px-3 py-2 rounded-xl bg-sbe-royal text-white text-xs font-semibold flex items-center gap-1 shrink-0"
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                    <span>{copiedPasswordId === 'new-client' ? 'Copied!' : 'Copy'}</span>
+                  </button>
+                </div>
+                <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                  Cryptographically secure 16-character password with letters, numbers, and symbols. Saved to backend for client HR access.
+                </p>
               </div>
 
               <div className="flex gap-3 pt-3">

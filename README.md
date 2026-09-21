@@ -72,14 +72,10 @@ npm run build
 
 ---
 
-## 🔐 Demo Credentials (Admin & Client HR)
+## 🔐 Access Control
 
-| Role | Username / Email | Password | Access Scope |
-|---|---|---|---|
-| **SBE Agency Admin** | `admin@sbe.in` | `sbe@1999` | Full access to all 500+ workers, client plant quotas, roll-call punch simulator, and billing downloads |
-| **Client Plant HR** | `hr@tvsmotor.com` | `tvs@2026` | Gated view restricted to TVS Motor Supplier assigned workforce and shifts |
+The application provides secure, credential-gated portals for Agency Administrators and Client HR coordinators. Access credentials are administered securely through the backend.
 
----
 
 ## 📄 Licences & Statutory Compliance
 
