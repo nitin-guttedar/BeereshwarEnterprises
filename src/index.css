@@ -107,4 +107,25 @@
   .dark .border-sbe-subtle {
     border-color: rgba(255, 255, 255, 0.1);
   }
+
+  @keyframes shimmer {
+    0% {
+      background-position: -200% 0;
+    }
+    100% {
+      background-position: 200% 0;
+    }
+  }
+
+  .animate-shimmer {
+    background: linear-gradient(90deg, rgba(226, 232, 240, 0.7) 0%, rgba(248, 250, 252, 0.95) 50%, rgba(226, 232, 240, 0.7) 100%);
+    background-size: 200% 100%;
+    animation: shimmer 1.8s ease-in-out infinite;
+  }
+
+  .dark .animate-shimmer {
+    background: linear-gradient(90deg, rgba(23, 34, 59, 0.6) 0%, rgba(37, 53, 90, 0.95) 50%, rgba(23, 34, 59, 0.6) 100%);
+    background-size: 200% 100%;
+    animation: shimmer 1.8s ease-in-out infinite;
+  }
 }

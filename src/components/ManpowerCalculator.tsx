@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Calculator, Users, Clock, Send, CheckCircle2 } from 'lucide-react';
+import { Calculator, Users, Clock, Send, CheckCircle2, Loader2 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { submitProposal } from '../services/api';
 
@@ -17,6 +17,7 @@ export const ManpowerCalculator: React.FC<ManpowerCalculatorProps> = ({ onSucces
   const [contactName, setContactName] = useState<string>('');
   const [phone, setPhone] = useState<string>('');
   const [isSubmitted, setIsSubmitted] = useState<boolean>(false);
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
   // Rate estimation engine
   const baseRatePerWorkerShift = 620; // Estimated benchmark daily cost for industrial labor in Mysore region
@@ -26,12 +27,14 @@ export const ManpowerCalculator: React.FC<ManpowerCalculatorProps> = ({ onSucces
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return; // Idempotency guard
+
     if (!companyName || !phone || !contactName) {
       alert('Please fill out company name, contact person, and phone number.');
       return;
     }
 
-    setIsSubmitted(true);
+    setIsSubmitting(true);
 
     try {
       confetti({
@@ -303,10 +306,20 @@ export const ManpowerCalculator: React.FC<ManpowerCalculatorProps> = ({ onSucces
 
             <button
               type="submit"
-              className="w-full py-3.5 px-6 rounded-xl bg-sbe-royal hover:bg-blue-700 text-white font-bold text-xs shadow-lg shadow-blue-500/20 transition-all flex items-center justify-center gap-2"
+              disabled={isSubmitting}
+              className="w-full py-3.5 px-6 rounded-xl bg-sbe-royal hover:bg-blue-700 text-white font-bold text-xs shadow-lg shadow-blue-500/20 transition-all flex items-center justify-center gap-2 disabled:opacity-60"
             >
-              <Send className="w-4 h-4" />
-              <span>Submit Requisition &amp; Request Callback</span>
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Submitting Requisition...</span>
+                </>
+              ) : (
+                <>
+                  <Send className="w-4 h-4" />
+                  <span>Submit Requisition &amp; Request Callback</span>
+                </>
+              )}
             </button>
           </div>
         </form>

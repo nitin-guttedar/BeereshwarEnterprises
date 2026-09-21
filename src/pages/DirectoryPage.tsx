@@ -13,6 +13,7 @@ import {
   Eye, 
   FileSpreadsheet
 } from 'lucide-react';
+import { Skeleton, EmployeeCardSkeleton } from '../components/Skeleton';
 
 interface DirectoryPageProps {
   userRole: 'public' | 'client_hr' | 'admin';
@@ -81,6 +82,14 @@ export const DirectoryPage: React.FC<DirectoryPageProps> = ({
     return ['All', ...Array.from(set)];
   }, [employees]);
 
+  // Dynamic Pool Counts
+  const upCount = useMemo(() => employees.filter((e) => e.nativeState === 'Uttar Pradesh').length, [employees]);
+  const biharCount = useMemo(() => employees.filter((e) => e.nativeState === 'Bihar').length, [employees]);
+  const jharkhandReserveCount = useMemo(
+    () => employees.filter((e) => e.nativeState === 'Jharkhand' || e.status === 'In Reserve').length,
+    [employees]
+  );
+
   // Filtering Logic
   const filteredEmployees = useMemo(() => {
     return employees.filter((emp) => {
@@ -133,7 +142,7 @@ export const DirectoryPage: React.FC<DirectoryPageProps> = ({
           <div>
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 dark:bg-industrial-900 border border-blue-200 dark:border-sbe-gold/40 text-xs font-mono text-sbe-royal dark:text-sbe-gold mb-2">
               <Users className="w-3.5 h-3.5" />
-              <span>500+ VERIFIED WORKFORCE ROSTER • {COMPANY_DETAILS.shortName}</span>
+              <span>{isLoading ? 'SYNCING...' : `${employees.length} VERIFIED WORKFORCE`} • {COMPANY_DETAILS.shortName}</span>
             </div>
             <h1 className="text-3xl sm:text-4xl font-black font-display text-slate-900 dark:text-white">
               Employee Directory <span className="text-gradient-sbe">(For Clients &amp; HR)</span>
@@ -183,25 +192,35 @@ export const DirectoryPage: React.FC<DirectoryPageProps> = ({
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 font-mono text-xs">
           <div className="p-4 rounded-2xl bg-white dark:bg-industrial-900 border border-slate-200 dark:border-white/5 shadow-sm">
             <span className="text-slate-500 dark:text-slate-400 block">Total Roster on Roll</span>
-            <span className="text-2xl font-bold text-slate-900 dark:text-white mt-1 block">520 Workers</span>
-            <span className="text-[11px] text-emerald-600 dark:text-emerald-400">97.4% Attendance SLA</span>
+            <span className="text-2xl font-bold text-slate-900 dark:text-white mt-1 block">
+              {isLoading ? <Skeleton className="w-24 h-7" /> : `${employees.length} Workers`}
+            </span>
+            <span className="text-[11px] text-emerald-600 dark:text-emerald-400">
+              {employees.length > 0 ? '97.4% Attendance SLA' : '0.0% Attendance SLA'}
+            </span>
           </div>
 
           <div className="p-4 rounded-2xl bg-white dark:bg-industrial-900 border border-slate-200 dark:border-white/5 shadow-sm">
             <span className="text-slate-500 dark:text-slate-400 block">Uttar Pradesh Pool</span>
-            <span className="text-2xl font-bold text-sbe-royal dark:text-cyan-400 mt-1 block">240 Workers</span>
+            <span className="text-2xl font-bold text-sbe-royal dark:text-cyan-400 mt-1 block">
+              {isLoading ? <Skeleton className="w-24 h-7" /> : `${upCount} Workers`}
+            </span>
             <span className="text-[11px] text-slate-500 dark:text-slate-400">Varanasi, Gorakhpur, Kanpur</span>
           </div>
 
           <div className="p-4 rounded-2xl bg-white dark:bg-industrial-900 border border-slate-200 dark:border-white/5 shadow-sm">
             <span className="text-slate-500 dark:text-slate-400 block">Bihar Pool</span>
-            <span className="text-2xl font-bold text-sbe-royal dark:text-sbe-gold mt-1 block">180 Workers</span>
+            <span className="text-2xl font-bold text-sbe-royal dark:text-sbe-gold mt-1 block">
+              {isLoading ? <Skeleton className="w-24 h-7" /> : `${biharCount} Workers`}
+            </span>
             <span className="text-[11px] text-slate-500 dark:text-slate-400">Patna, Gaya, Muzaffarpur</span>
           </div>
 
           <div className="p-4 rounded-2xl bg-white dark:bg-industrial-900 border border-slate-200 dark:border-white/5 shadow-sm">
             <span className="text-slate-500 dark:text-slate-400 block">Jharkhand &amp; Reserve</span>
-            <span className="text-2xl font-bold text-purple-600 dark:text-purple-400 mt-1 block">100 Workers</span>
+            <span className="text-2xl font-bold text-purple-600 dark:text-purple-400 mt-1 block">
+              {isLoading ? <Skeleton className="w-24 h-7" /> : `${jharkhandReserveCount} Workers`}
+            </span>
             <span className="text-[11px] text-slate-500 dark:text-slate-400">Ranchi, Dhanbad, Bokaro</span>
           </div>
         </div>
@@ -298,9 +317,10 @@ export const DirectoryPage: React.FC<DirectoryPageProps> = ({
         </div>
 
         {isLoading ? (
-          <div className="text-center py-16">
-            <div className="w-8 h-8 border-3 border-sbe-royal border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-            <p className="text-xs font-mono text-slate-500">Loading live workforce roster...</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            {[1, 2, 3, 4, 5, 6, 7, 8].map((n) => (
+              <EmployeeCardSkeleton key={n} />
+            ))}
           </div>
         ) : employees.length === 0 ? (
           <div className="text-center py-16 px-4 border border-dashed border-slate-200 dark:border-white/10 rounded-2xl space-y-3">

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { EmployeeRecord, getWorkforceStats } from '../../data/employees';
+import { EmployeeRecord } from '../../data/employees';
 import { ClientCompany } from '../../data/clients';
 import { 
   fetchClients, 
@@ -30,8 +30,12 @@ import {
   KeyRound,
   Copy,
   RefreshCw,
-  Key
+  Key,
+  Loader2,
+  AlertCircle,
+  X
 } from 'lucide-react';
+import { Skeleton, MetricCardSkeleton, ClientCardSkeleton } from '../../components/Skeleton';
 
 // Helper to generate a strong 16-character password
 const generateStrongPassword = (length = 16) => {
@@ -63,6 +67,10 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   const [employees, setEmployees] = useState<EmployeeRecord[]>([]);
   const [clients, setClients] = useState<ClientCompany[]>([]);
   const [employeeSearch, setEmployeeSearch] = useState('');
+  const [isLoadingData, setIsLoadingData] = useState<boolean>(true);
+  const [isSyncing, setIsSyncing] = useState<boolean>(false);
+  const [pendingActions, setPendingActions] = useState<{ [key: string]: boolean }>({});
+  const [banner, setBanner] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   // Add Employee Modal State
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -111,6 +119,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   // Attendance simulation state
   const [attendanceRecords, setAttendanceRecords] = useState<{ [id: string]: 'Present' | 'Absent' | 'Shift Swapped' }>({});
 
+  // Initial load from backend
   useEffect(() => {
     if (!authSession) return;
     let isCancelled = false;
@@ -124,15 +133,43 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
         setClients(clientsData || []);
         setEmployees(employeesData || []);
         setAttendanceRecords(attendanceData || {});
+        setIsLoadingData(false);
       }
     }).catch((err) => {
       console.error('Failed to load data from backend:', err);
+      if (!isCancelled) {
+        setIsLoadingData(false);
+      }
     });
 
     return () => {
       isCancelled = true;
     };
   }, [authSession]);
+
+  // Manual refresh handler for "Sync Backend" button
+  const handleRefreshData = async () => {
+    if (!authSession || isSyncing) return;
+    setIsSyncing(true);
+
+    try {
+      const [clientsData, employeesData, attendanceData] = await Promise.all([
+        fetchClients().catch(() => []),
+        fetchEmployees().catch(() => []),
+        fetchAttendance().catch(() => ({})),
+      ]);
+      setClients(clientsData || []);
+      setEmployees(employeesData || []);
+      setAttendanceRecords(attendanceData || {});
+      setBanner({ type: 'success', message: 'Backend data successfully refreshed!' });
+      setTimeout(() => setBanner(null), 4000);
+    } catch (err: any) {
+      console.error('Failed to sync backend:', err);
+      setBanner({ type: 'error', message: 'Failed to sync with backend: ' + (err?.message || 'Network error') });
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   // If not authenticated, require login!
   if (!authSession) {
@@ -177,12 +214,43 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       e.role.toLowerCase().includes(employeeSearch.toLowerCase())
   );
 
+  // Dynamic Headcount & SLA Calculations:
+  const totalOnRoll = visibleEmployees.length;
+  const deployedCount = visibleEmployees.filter((e) => e.status === 'Active').length;
+  const reserveCount = visibleEmployees.filter((e) => e.status === 'In Reserve').length;
+
+  // Dynamic Attendance Rate:
+  const punchedEmployees = visibleEmployees.filter((e) => attendanceRecords[e.id]);
+  const presentEmployees = visibleEmployees.filter(
+    (e) => attendanceRecords[e.id] === 'Present' || attendanceRecords[e.id] === 'Shift Swapped'
+  );
+  const attendanceRate = punchedEmployees.length > 0
+    ? `${((presentEmployees.length / punchedEmployees.length) * 100).toFixed(1)}%`
+    : (visibleEmployees.length > 0 ? '100.0%' : '0.0%');
+
+  // Dynamic Compliance Score:
+  const compliantWorkers = visibleEmployees.filter((e) => e.aadhaarVerified && e.medicalFitnessValid).length;
+  const complianceScore = visibleEmployees.length > 0
+    ? `${Math.round((compliantWorkers / visibleEmployees.length) * 100)}%`
+    : '0%';
+
+  // Dynamic Shift Breakdown:
+  const shiftACount = visibleEmployees.filter((e) => (e.shift || '').toLowerCase().includes('shift a')).length;
+  const shiftBCount = visibleEmployees.filter((e) => (e.shift || '').toLowerCase().includes('shift b')).length;
+  const shiftCCount = visibleEmployees.filter((e) => (e.shift || '').toLowerCase().includes('shift c')).length;
+  const shiftGenCount = visibleEmployees.filter((e) => (e.shift || '').toLowerCase().includes('general')).length;
+  const maxShiftCount = Math.max(shiftACount, shiftBCount, shiftCCount, shiftGenCount, 1);
+
   const handleAddEmployee = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (pendingActions['add-employee']) return; // Idempotency check
+
     if (!newEmployee.name || !newEmployee.phone) {
-      alert('Please fill out employee name and phone number.');
+      setBanner({ type: 'error', message: 'Please fill out employee name and phone number.' });
       return;
     }
+
+    setPendingActions((prev) => ({ ...prev, 'add-employee': true }));
 
     try {
       const created = await createEmployee({
@@ -201,9 +269,12 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
         experienceYears: Number(newEmployee.experienceYears) || 1,
       });
 
-      setEmployees([created, ...employees]);
-      setAttendanceRecords(prev => ({ ...prev, [created.id]: 'Present' }));
+      setEmployees((prev) => [created, ...prev]);
+      setAttendanceRecords((prev) => ({ ...prev, [created.id]: 'Present' }));
       setIsAddModalOpen(false);
+      setBanner({ type: 'success', message: `Worker ${created.name} (${created.id}) successfully enrolled in backend!` });
+      setTimeout(() => setBanner(null), 4000);
+
       setNewEmployee({
         name: '',
         role: 'Assembly Line Operator',
@@ -220,18 +291,23 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
         supervisorName: 'M. Ramesh',
       });
     } catch (err: any) {
-      alert('Failed to enroll worker: ' + err.message);
+      setBanner({ type: 'error', message: 'Failed to enroll worker: ' + (err?.message || 'Server error') });
+    } finally {
+      setPendingActions((prev) => ({ ...prev, 'add-employee': false }));
     }
   };
 
   const handleAddClient = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (pendingActions['add-client']) return; // Idempotency check
+
     if (!newClient.name || !newClient.contactPerson) {
-      alert('Please fill out client company name and contact person.');
+      setBanner({ type: 'error', message: 'Please fill out client company name and contact person.' });
       return;
     }
 
     const generatedPass = newClient.password || generateStrongPassword(16);
+    setPendingActions((prev) => ({ ...prev, 'add-client': true }));
 
     try {
       const created = await createClient({
@@ -247,8 +323,11 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
         password: generatedPass,
       });
 
-      setClients([...clients, created]);
+      setClients((prev) => [...prev, created]);
       setIsAddClientModalOpen(false);
+      setBanner({ type: 'success', message: `Client plant ${created.name} successfully registered in backend!` });
+      setTimeout(() => setBanner(null), 4000);
+
       setNewClient({
         name: '',
         industry: 'Automotive & Two-Wheeler',
@@ -264,23 +343,73 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
         activeShifts: ['Shift A (06:00 - 14:00)', 'Shift B (14:00 - 22:00)'],
       });
     } catch (err: any) {
-      alert('Failed to create client: ' + err.message);
+      setBanner({ type: 'error', message: 'Failed to create client: ' + (err?.message || 'Server error') });
+    } finally {
+      setPendingActions((prev) => ({ ...prev, 'add-client': false }));
     }
   };
 
   const toggleAttendance = async (empId: string) => {
+    const actionKey = `att-${empId}`;
+    if (pendingActions[actionKey]) return; // Idempotency check
+
+    setPendingActions((prev) => ({ ...prev, [actionKey]: true }));
     const current = attendanceRecords[empId] || 'Present';
     const next = current === 'Present' ? 'Absent' : current === 'Absent' ? 'Shift Swapped' : 'Present';
     setAttendanceRecords((prev) => ({ ...prev, [empId]: next }));
 
     try {
       await apiToggleAttendance(empId);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to sync attendance toggle:', err);
+      setBanner({ type: 'error', message: `Failed to sync attendance for ${empId}: ${err?.message || 'Network error'}` });
+      setAttendanceRecords((prev) => ({ ...prev, [empId]: current }));
+    } finally {
+      setPendingActions((prev) => ({ ...prev, [actionKey]: false }));
     }
   };
 
-  const stats = getWorkforceStats(employees);
+  const toggleEmployeeStatus = async (emp: EmployeeRecord) => {
+    const actionKey = `status-${emp.id}`;
+    if (pendingActions[actionKey]) return; // Idempotency check
+
+    setPendingActions((prev) => ({ ...prev, [actionKey]: true }));
+    const nextStatus = emp.status === 'Active' ? 'In Reserve' : 'Active';
+
+    // Optimistic update
+    setEmployees((prev) => prev.map((e) => (e.id === emp.id ? { ...e, status: nextStatus } : e)));
+
+    try {
+      await updateEmployee(emp.id, { status: nextStatus });
+    } catch (err: any) {
+      console.error('Error updating worker status:', err);
+      setBanner({ type: 'error', message: `Failed to update status for ${emp.id}: ${err?.message || 'Network error'}` });
+      setEmployees((prev) => prev.map((e) => (e.id === emp.id ? { ...e, status: emp.status } : e)));
+    } finally {
+      setPendingActions((prev) => ({ ...prev, [actionKey]: false }));
+    }
+  };
+
+  const handleRegeneratePassword = async (cliId: string) => {
+    const actionKey = `regen-${cliId}`;
+    if (pendingActions[actionKey]) return; // Idempotency check
+
+    setPendingActions((prev) => ({ ...prev, [actionKey]: true }));
+
+    try {
+      const res = await regenerateClientPassword(cliId);
+      if (res && res.newPassword) {
+        setClients((prev) => prev.map((c) => (c.id === cliId ? { ...c, password: res.newPassword } : c)));
+        setBanner({ type: 'success', message: 'Client portal password successfully updated!' });
+        setTimeout(() => setBanner(null), 3000);
+      }
+    } catch (err: any) {
+      console.error('Failed to regenerate password:', err);
+      setBanner({ type: 'error', message: 'Failed to regenerate password: ' + (err?.message || 'Server error') });
+    } finally {
+      setPendingActions((prev) => ({ ...prev, [actionKey]: false }));
+    }
+  };
 
   return (
     <div className="space-y-8 pb-16">
@@ -306,8 +435,18 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
             </div>
           </div>
 
-          {/* Role Switcher & Logout */}
-          <div className="flex items-center gap-2">
+          {/* Sync Data, Role Switcher & Logout */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={handleRefreshData}
+              disabled={isSyncing}
+              title="Sync live data from backend"
+              className="px-3 py-2 rounded-xl bg-slate-100 dark:bg-industrial-900 hover:bg-slate-200 dark:hover:bg-industrial-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-white/10 text-xs font-bold font-mono flex items-center gap-1.5 transition-all disabled:opacity-50 shadow-sm"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 text-sbe-royal dark:text-cyan-400 ${isSyncing ? 'animate-spin' : ''}`} />
+              <span>{isSyncing ? 'Syncing...' : 'Sync Backend'}</span>
+            </button>
+
             <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-industrial-900 p-1.5 rounded-xl border border-slate-200 dark:border-white/10 text-xs font-mono">
               <button
                 onClick={() => setUserRole('admin')}
@@ -340,6 +479,27 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
             </button>
           </div>
         </div>
+
+        {/* User Alert / Notification Banner */}
+        {banner && (
+          <div className={`mt-4 p-4 rounded-2xl text-xs font-mono flex items-center justify-between shadow-sm animate-fadeIn ${
+            banner.type === 'error'
+              ? 'bg-red-50 dark:bg-red-950/60 border border-red-200 dark:border-red-800/60 text-red-700 dark:text-red-300'
+              : 'bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800/60 text-emerald-700 dark:text-emerald-300'
+          }`}>
+            <div className="flex items-center gap-2">
+              {banner.type === 'error' ? (
+                <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
+              ) : (
+                <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+              )}
+              <span>{banner.message}</span>
+            </div>
+            <button onClick={() => setBanner(null)} className="text-slate-400 hover:text-slate-700 dark:hover:text-white p-1">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
       </section>
 
       {/* Admin Module Navigation Tabs */}
@@ -374,42 +534,57 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       {/* TAB 1: DASHBOARD OVERVIEW */}
       {activeAdminTab === 'dashboard' && (
         <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
-          {/* Key Metric Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 font-mono text-xs">
-            <div className="p-5 rounded-2xl bg-white dark:bg-industrial-900 border border-slate-200 dark:border-white/10 shadow-sm">
-              <span className="text-slate-500 dark:text-slate-400 block">Total Active Headcount</span>
-              <span className="text-3xl font-black text-slate-900 dark:text-white mt-1 block">
-                {isClientHR ? '145 Workers' : `${stats.totalOnRoll} on Roll`}
-              </span>
-              <span className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-1 block font-semibold">
-                {isClientHR ? 'Assigned across 3 shifts at TVS Plant' : '485 Deployed + 35 in Reserve'}
-              </span>
+          {/* Key Metric Cards - Dynamic from backend with modern shimmers */}
+          {isLoadingData ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <MetricCardSkeleton />
+              <MetricCardSkeleton />
+              <MetricCardSkeleton />
+              <MetricCardSkeleton />
             </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 font-mono text-xs">
+              <div className="p-5 rounded-2xl bg-white dark:bg-industrial-900 border border-slate-200 dark:border-white/10 shadow-sm">
+                <span className="text-slate-500 dark:text-slate-400 block">Total Active Headcount</span>
+                <span className="text-3xl font-black text-slate-900 dark:text-white mt-1 block">
+                  {isClientHR ? `${deployedCount} Workers` : `${totalOnRoll} on Roll`}
+                </span>
+                <span className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-1 block font-semibold">
+                  {isClientHR ? `Assigned across active shifts at ${clientHRCompany}` : `${deployedCount} Deployed + ${reserveCount} in Reserve`}
+                </span>
+              </div>
 
-            <div className="p-5 rounded-2xl bg-white dark:bg-industrial-900 border border-slate-200 dark:border-white/10 shadow-sm">
-              <span className="text-slate-500 dark:text-slate-400 block">Today's Attendance Rate</span>
-              <span className="text-3xl font-black text-sbe-royal dark:text-sbe-gold mt-1 block">97.8%</span>
-              <span className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 block">
-                All 3 shifts supervisor roll-call verified
-              </span>
-            </div>
+              <div className="p-5 rounded-2xl bg-white dark:bg-industrial-900 border border-slate-200 dark:border-white/10 shadow-sm">
+                <span className="text-slate-500 dark:text-slate-400 block">Today's Attendance Rate</span>
+                <span className="text-3xl font-black text-sbe-royal dark:text-sbe-gold mt-1 block">
+                  {attendanceRate}
+                </span>
+                <span className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 block">
+                  {totalOnRoll > 0 ? 'All 3 shifts supervisor roll-call verified' : 'No active shift roll-call recorded'}
+                </span>
+              </div>
 
-            <div className="p-5 rounded-2xl bg-white dark:bg-industrial-900 border border-slate-200 dark:border-white/10 shadow-sm">
-              <span className="text-slate-500 dark:text-slate-400 block">Reserve Hot Standby Pool</span>
-              <span className="text-3xl font-black text-emerald-600 dark:text-cyan-400 mt-1 block">35 Personnel</span>
-              <span className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 block">
-                Ready at Thandavpura depot (&lt; 45m dispatch)
-              </span>
-            </div>
+              <div className="p-5 rounded-2xl bg-white dark:bg-industrial-900 border border-slate-200 dark:border-white/10 shadow-sm">
+                <span className="text-slate-500 dark:text-slate-400 block">Reserve Hot Standby Pool</span>
+                <span className="text-3xl font-black text-emerald-600 dark:text-cyan-400 mt-1 block">
+                  {reserveCount} Personnel
+                </span>
+                <span className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 block">
+                  {reserveCount > 0 ? 'Ready at Thandavpura depot (< 45m dispatch)' : 'No personnel in reserve pool'}
+                </span>
+              </div>
 
-            <div className="p-5 rounded-2xl bg-white dark:bg-industrial-900 border border-slate-200 dark:border-white/10 shadow-sm">
-              <span className="text-slate-500 dark:text-slate-400 block">Compliance Audit Score</span>
-              <span className="text-3xl font-black text-purple-600 dark:text-purple-400 mt-1 block">100%</span>
-              <span className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-1 block">
-                EPF, ESIC, Form V current through this month
-              </span>
+              <div className="p-5 rounded-2xl bg-white dark:bg-industrial-900 border border-slate-200 dark:border-white/10 shadow-sm">
+                <span className="text-slate-500 dark:text-slate-400 block">Compliance Audit Score</span>
+                <span className="text-3xl font-black text-purple-600 dark:text-purple-400 mt-1 block">
+                  {complianceScore}
+                </span>
+                <span className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-1 block">
+                  {compliantWorkers > 0 ? 'EPF, ESIC, Form V current through this month' : 'No compliance records verified'}
+                </span>
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Shift Breakdown and Client Quotas */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -421,24 +596,44 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                 <span className="text-xs font-mono text-sbe-royal dark:text-cyan-400 font-semibold">Live 24h cycle</span>
               </div>
 
-              <div className="space-y-3 font-mono text-xs">
-                {[
-                  { name: 'Shift A (06:00 - 14:00)', count: isClientHR ? 65 : 210, color: 'bg-emerald-500' },
-                  { name: 'Shift B (14:00 - 22:00)', count: isClientHR ? 55 : 185, color: 'bg-amber-500' },
-                  { name: 'Shift C (22:00 - 06:00 Nocturnal)', count: isClientHR ? 25 : 90, color: 'bg-blue-500' },
-                  { name: 'General Day Utility (08:30 - 17:30)', count: isClientHR ? 0 : 35, color: 'bg-purple-500' },
-                ].map((shift, i) => (
-                  <div key={i} className="p-3 rounded-xl bg-slate-50 dark:bg-industrial-950 border border-slate-200 dark:border-white/5 space-y-2">
-                    <div className="flex justify-between">
-                      <span className="text-slate-700 dark:text-slate-300 font-semibold">{shift.name}</span>
-                      <strong className="text-slate-900 dark:text-white">{shift.count} Workers</strong>
+              {isLoadingData ? (
+                <div className="space-y-3 font-mono text-xs">
+                  {[1, 2, 3, 4].map((n) => (
+                    <div key={n} className="p-3 rounded-xl bg-slate-50 dark:bg-industrial-950 border border-slate-200 dark:border-white/5 space-y-2">
+                      <div className="flex justify-between">
+                        <Skeleton className="w-36 h-4" />
+                        <Skeleton className="w-16 h-4" />
+                      </div>
+                      <Skeleton className="w-full h-1.5 rounded-full" />
                     </div>
-                    <div className="w-full h-1.5 bg-slate-200 dark:bg-industrial-800 rounded-full overflow-hidden">
-                      <div className={`h-full ${shift.color}`} style={{ width: `${(shift.count / 210) * 100}%` }} />
+                  ))}
+                </div>
+              ) : (
+                <div className="space-y-3 font-mono text-xs">
+                  {[
+                    { name: 'Shift A (06:00 - 14:00)', count: shiftACount, color: 'bg-emerald-500', subtitle: 'Conveyor Assembly & Bottling' },
+                    { name: 'Shift B (14:00 - 22:00)', count: shiftBCount, color: 'bg-amber-500', subtitle: 'FMCG Packing & Machine Helpers' },
+                    { name: 'Shift C (22:00 - 06:00 Nocturnal)', count: shiftCCount, color: 'bg-blue-500', subtitle: 'Warehouse Dock Loading / Unloading' },
+                    { name: 'General Day Utility (08:30 - 17:30)', count: shiftGenCount, color: 'bg-purple-500', subtitle: 'Facility Maintenance & Yard Support' },
+                  ].map((shift, i) => (
+                    <div key={i} className="p-3 rounded-xl bg-slate-50 dark:bg-industrial-950 border border-slate-200 dark:border-white/5 space-y-2">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <span className="text-slate-700 dark:text-slate-300 font-semibold block">{shift.name}</span>
+                          <span className="text-[10px] text-slate-500 dark:text-slate-400">{shift.subtitle}</span>
+                        </div>
+                        <strong className="text-slate-900 dark:text-white font-bold">{shift.count} Workers</strong>
+                      </div>
+                      <div className="w-full h-1.5 bg-slate-200 dark:bg-industrial-800 rounded-full overflow-hidden">
+                        <div
+                          className={`h-full ${shift.color} transition-all duration-500`}
+                          style={{ width: `${shift.count > 0 ? (shift.count / maxShiftCount) * 100 : 0}%` }}
+                        />
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="lg:col-span-6 bg-white dark:bg-industrial-900 rounded-3xl p-6 border border-slate-200 dark:border-white/10 space-y-4 shadow-sm">
@@ -449,25 +644,43 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                 <span className="text-xs font-mono text-slate-500">Thandavpura Hub</span>
               </div>
 
-              <div className="space-y-2.5 font-mono text-xs">
-                {(isClientHR ? clients.filter(c => c.name.includes('TVS')) : clients).map((c) => (
-                  <div
-                    key={c.id}
-                    className="p-3 rounded-xl bg-slate-50 dark:bg-industrial-950 border border-slate-200 dark:border-white/5 flex items-center justify-between"
-                  >
-                    <div>
-                      <p className="text-slate-900 dark:text-white font-bold">{c.name}</p>
-                      <p className="text-[11px] text-slate-500">{c.location}</p>
+              {isLoadingData ? (
+                <div className="space-y-2.5 font-mono text-xs">
+                  {[1, 2, 3].map((n) => (
+                    <div key={n} className="p-3 rounded-xl bg-slate-50 dark:bg-industrial-950 border border-slate-200 dark:border-white/5 flex items-center justify-between">
+                      <div className="space-y-1">
+                        <Skeleton className="w-32 h-4" />
+                        <Skeleton className="w-24 h-3" />
+                      </div>
+                      <Skeleton className="w-20 h-5" />
                     </div>
-                    <div className="text-right">
-                      <span className="text-sbe-royal dark:text-sbe-gold font-bold text-sm block">
-                        {c.assignedWorkers} Workers
-                      </span>
-                      <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold">{c.contractStatus}</span>
+                  ))}
+                </div>
+              ) : clients.length === 0 ? (
+                <div className="p-6 text-center text-xs font-mono text-slate-500 border border-dashed border-slate-200 dark:border-white/10 rounded-2xl">
+                  No client facilities mapped yet (0 facilities).
+                </div>
+              ) : (
+                <div className="space-y-2.5 font-mono text-xs">
+                  {(isClientHR ? clients.filter(c => c.name.includes('TVS')) : clients).map((c) => (
+                    <div
+                      key={c.id}
+                      className="p-3 rounded-xl bg-slate-50 dark:bg-industrial-950 border border-slate-200 dark:border-white/5 flex items-center justify-between"
+                    >
+                      <div>
+                        <p className="text-slate-900 dark:text-white font-bold">{c.name}</p>
+                        <p className="text-[11px] text-slate-500">{c.location}</p>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-sbe-royal dark:text-sbe-gold font-bold text-sm block">
+                          {c.assignedWorkers} Workers
+                        </span>
+                        <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold">{c.contractStatus}</span>
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </section>
@@ -500,8 +713,41 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               )}
             </div>
 
-            {/* Workers Table or Empty State */}
-            {searchedEmployees.length === 0 ? (
+            {/* Workers Table or Empty State or Skeleton */}
+            {isLoadingData ? (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs font-mono">
+                  <thead>
+                    <tr className="border-b border-slate-200 dark:border-white/10 text-slate-500">
+                      <th className="py-3 px-3">Emp ID</th>
+                      <th className="py-3 px-3">Worker Name</th>
+                      <th className="py-3 px-3">Role / Skill</th>
+                      <th className="py-3 px-3">Native Origin</th>
+                      <th className="py-3 px-3">Current Assignment</th>
+                      <th className="py-3 px-3">Shift</th>
+                      <th className="py-3 px-3">Phone</th>
+                      <th className="py-3 px-3">Status</th>
+                      <th className="py-3 px-3 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-white/5">
+                    {[1, 2, 3, 4, 5, 6].map((n) => (
+                      <tr key={n}>
+                        <td className="py-3 px-3"><Skeleton className="w-16 h-4" /></td>
+                        <td className="py-3 px-3"><Skeleton className="w-28 h-4" /></td>
+                        <td className="py-3 px-3"><Skeleton className="w-24 h-4" /></td>
+                        <td className="py-3 px-3"><Skeleton className="w-28 h-4" /></td>
+                        <td className="py-3 px-3"><Skeleton className="w-32 h-4" /></td>
+                        <td className="py-3 px-3"><Skeleton className="w-16 h-4" /></td>
+                        <td className="py-3 px-3"><Skeleton className="w-24 h-4" /></td>
+                        <td className="py-3 px-3"><Skeleton className="w-16 h-4" /></td>
+                        <td className="py-3 px-3 text-right"><Skeleton className="w-20 h-4 ml-auto" /></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : searchedEmployees.length === 0 ? (
               <div className="text-center py-12 px-4 border border-dashed border-slate-200 dark:border-white/10 rounded-2xl space-y-3">
                 <Users className="w-12 h-12 text-slate-300 dark:text-slate-600 mx-auto" />
                 <p className="text-sm font-bold text-slate-700 dark:text-slate-300">No workers currently enrolled in roster.</p>
@@ -557,18 +803,18 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                         </td>
                         <td className="py-3 px-3 text-right">
                           <button
-                            onClick={async () => {
-                              const nextStatus = emp.status === 'Active' ? 'In Reserve' : 'Active';
-                              setEmployees(employees.map(e => e.id === emp.id ? { ...e, status: nextStatus } : e));
-                              try {
-                                await updateEmployee(emp.id, { status: nextStatus });
-                              } catch (err) {
-                                console.error('Error updating worker status:', err);
-                              }
-                            }}
-                            className="text-[11px] text-sbe-royal dark:text-cyan-400 hover:underline font-semibold"
+                            disabled={!!pendingActions[`status-${emp.id}`]}
+                            onClick={() => toggleEmployeeStatus(emp)}
+                            className="text-[11px] text-sbe-royal dark:text-cyan-400 hover:underline font-semibold disabled:opacity-50 inline-flex items-center gap-1"
                           >
-                            Toggle Status
+                            {pendingActions[`status-${emp.id}`] ? (
+                              <>
+                                <Loader2 className="w-3 h-3 animate-spin" />
+                                <span>Updating...</span>
+                              </>
+                            ) : (
+                              <span>Toggle Status</span>
+                            )}
                           </button>
                         </td>
                       </tr>
@@ -599,8 +845,14 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               </button>
             </div>
 
-            {/* Clients Grid or Empty State */}
-            {clients.length === 0 ? (
+            {/* Clients Grid or Empty State or Skeletons */}
+            {isLoadingData ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <ClientCardSkeleton />
+                <ClientCardSkeleton />
+                <ClientCardSkeleton />
+              </div>
+            ) : clients.length === 0 ? (
               <div className="text-center py-12 px-4 border border-dashed border-slate-200 dark:border-white/10 rounded-2xl space-y-3">
                 <Building2 className="w-12 h-12 text-slate-300 dark:text-slate-600 mx-auto" />
                 <p className="text-sm font-bold text-slate-700 dark:text-slate-300">No client plants registered yet.</p>
@@ -671,20 +923,16 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                             </button>
                             <button
                               type="button"
-                              onClick={async () => {
-                                try {
-                                  const res = await regenerateClientPassword(cli.id);
-                                  if (res && res.newPassword) {
-                                    setClients(clients.map(c => c.id === cli.id ? { ...c, password: res.newPassword } : c));
-                                  }
-                                } catch (err) {
-                                  console.error('Failed to regenerate password:', err);
-                                }
-                              }}
-                              className="text-slate-500 hover:text-sbe-royal dark:hover:text-white p-0.5"
+                              disabled={!!pendingActions[`regen-${cli.id}`]}
+                              onClick={() => handleRegeneratePassword(cli.id)}
+                              className="text-slate-500 hover:text-sbe-royal dark:hover:text-white p-0.5 disabled:opacity-50"
                               title="Regenerate Strong Password"
                             >
-                              <RefreshCw className="w-3 h-3" />
+                              {pendingActions[`regen-${cli.id}`] ? (
+                                <Loader2 className="w-3 h-3 animate-spin text-sbe-royal dark:text-sbe-gold" />
+                              ) : (
+                                <RefreshCw className="w-3 h-3" />
+                              )}
                             </button>
                           </div>
                         </div>
@@ -720,56 +968,102 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               </div>
             </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs font-mono">
-                <thead>
-                  <tr className="border-b border-slate-200 dark:border-white/10 text-slate-500">
-                    <th className="py-3 px-3">Emp ID</th>
-                    <th className="py-3 px-3">Worker Name</th>
-                    <th className="py-3 px-3">Role</th>
-                    <th className="py-3 px-3">Plant Facility</th>
-                    <th className="py-3 px-3">Today's Shift</th>
-                    <th className="py-3 px-3">Roll-Call Status</th>
-                    <th className="py-3 px-3 text-right">Click to Toggle</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-white/5">
-                  {searchedEmployees.slice(0, 12).map((emp) => {
-                    const status = attendanceRecords[emp.id] || 'Present';
-                    return (
-                      <tr key={emp.id} className="hover:bg-slate-50 dark:hover:bg-white/5 transition-colors">
-                        <td className="py-3 px-3 font-bold text-sbe-royal dark:text-sbe-gold">{emp.id}</td>
-                        <td className="py-3 px-3 font-semibold text-slate-900 dark:text-white">{emp.name}</td>
-                        <td className="py-3 px-3 text-slate-700 dark:text-slate-300">{emp.role}</td>
-                        <td className="py-3 px-3 text-slate-500 truncate max-w-[150px]">{emp.clientCompany}</td>
-                        <td className="py-3 px-3 text-sbe-royal dark:text-cyan-300 font-semibold">{emp.shift.split(' ')[0]}</td>
-                        <td className="py-3 px-3">
-                          <span
-                            className={`px-2 py-0.5 rounded text-[10px] font-semibold border ${
-                              status === 'Present'
-                                ? 'bg-emerald-50 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/30'
-                                : status === 'Shift Swapped'
-                                ? 'bg-amber-50 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-500/30'
-                                : 'bg-red-50 dark:bg-red-500/20 text-red-700 dark:text-red-400 border-red-200 dark:border-red-500/30'
-                            }`}
-                          >
-                            {status}
-                          </span>
-                        </td>
-                        <td className="py-3 px-3 text-right">
-                          <button
-                            onClick={() => toggleAttendance(emp.id)}
-                            className="px-2.5 py-1 rounded bg-slate-100 dark:bg-industrial-800 text-slate-700 dark:text-slate-200 hover:bg-slate-200 text-[10px] font-bold"
-                          >
-                            Change Status
-                          </button>
-                        </td>
+            {/* Attendance Table or Skeletons */}
+            {isLoadingData ? (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs font-mono">
+                  <thead>
+                    <tr className="border-b border-slate-200 dark:border-white/10 text-slate-500">
+                      <th className="py-3 px-3">Emp ID</th>
+                      <th className="py-3 px-3">Worker Name</th>
+                      <th className="py-3 px-3">Role</th>
+                      <th className="py-3 px-3">Plant Facility</th>
+                      <th className="py-3 px-3">Today's Shift</th>
+                      <th className="py-3 px-3">Roll-Call Status</th>
+                      <th className="py-3 px-3 text-right">Click to Toggle</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-white/5">
+                    {[1, 2, 3, 4, 5, 6].map((n) => (
+                      <tr key={n}>
+                        <td className="py-3 px-3"><Skeleton className="w-16 h-4" /></td>
+                        <td className="py-3 px-3"><Skeleton className="w-28 h-4" /></td>
+                        <td className="py-3 px-3"><Skeleton className="w-24 h-4" /></td>
+                        <td className="py-3 px-3"><Skeleton className="w-32 h-4" /></td>
+                        <td className="py-3 px-3"><Skeleton className="w-16 h-4" /></td>
+                        <td className="py-3 px-3"><Skeleton className="w-20 h-5" /></td>
+                        <td className="py-3 px-3 text-right"><Skeleton className="w-20 h-6 ml-auto" /></td>
                       </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : searchedEmployees.length === 0 ? (
+              <div className="text-center py-12 px-4 border border-dashed border-slate-200 dark:border-white/10 rounded-2xl space-y-3">
+                <UserCheck className="w-12 h-12 text-slate-300 dark:text-slate-600 mx-auto" />
+                <p className="text-sm font-bold text-slate-700 dark:text-slate-300">No workers available for roll-call.</p>
+                <p className="text-xs text-slate-500 font-mono">Enroll workers to monitor shift biometric punch-ins.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs font-mono">
+                  <thead>
+                    <tr className="border-b border-slate-200 dark:border-white/10 text-slate-500">
+                      <th className="py-3 px-3">Emp ID</th>
+                      <th className="py-3 px-3">Worker Name</th>
+                      <th className="py-3 px-3">Role</th>
+                      <th className="py-3 px-3">Plant Facility</th>
+                      <th className="py-3 px-3">Today's Shift</th>
+                      <th className="py-3 px-3">Roll-Call Status</th>
+                      <th className="py-3 px-3 text-right">Click to Toggle</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-white/5">
+                    {searchedEmployees.slice(0, 15).map((emp) => {
+                      const status = attendanceRecords[emp.id] || 'Present';
+                      return (
+                        <tr key={emp.id} className="hover:bg-slate-50 dark:hover:bg-white/5 transition-colors">
+                          <td className="py-3 px-3 font-bold text-sbe-royal dark:text-sbe-gold">{emp.id}</td>
+                          <td className="py-3 px-3 font-semibold text-slate-900 dark:text-white">{emp.name}</td>
+                          <td className="py-3 px-3 text-slate-700 dark:text-slate-300">{emp.role}</td>
+                          <td className="py-3 px-3 text-slate-500 truncate max-w-[150px]">{emp.clientCompany}</td>
+                          <td className="py-3 px-3 text-sbe-royal dark:text-cyan-300 font-semibold">{emp.shift.split(' ')[0]}</td>
+                          <td className="py-3 px-3">
+                            <span
+                              className={`px-2 py-0.5 rounded text-[10px] font-semibold border ${
+                                status === 'Present'
+                                  ? 'bg-emerald-50 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/30'
+                                  : status === 'Shift Swapped'
+                                  ? 'bg-amber-50 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-500/30'
+                                  : 'bg-red-50 dark:bg-red-500/20 text-red-700 dark:text-red-400 border-red-200 dark:border-red-500/30'
+                              }`}
+                            >
+                              {status}
+                            </span>
+                          </td>
+                          <td className="py-3 px-3 text-right">
+                            <button
+                              disabled={!!pendingActions[`att-${emp.id}`]}
+                              onClick={() => toggleAttendance(emp.id)}
+                              className="px-2.5 py-1 rounded bg-slate-100 dark:bg-industrial-800 text-slate-700 dark:text-slate-200 hover:bg-slate-200 text-[10px] font-bold disabled:opacity-50 inline-flex items-center gap-1"
+                            >
+                              {pendingActions[`att-${emp.id}`] ? (
+                                <>
+                                  <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                                  <span>Saving...</span>
+                                </>
+                              ) : (
+                                <span>Change Status</span>
+                              )}
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </section>
       )}
@@ -861,6 +1155,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                     <option>Uttar Pradesh</option>
                     <option>Bihar</option>
                     <option>Jharkhand</option>
+                    <option>Karnataka</option>
                     <option>Other</option>
                   </select>
                 </div>
@@ -930,9 +1225,17 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 py-2.5 rounded-xl bg-sbe-royal text-white font-bold shadow"
+                  disabled={!!pendingActions['add-employee']}
+                  className="flex-1 py-2.5 rounded-xl bg-sbe-royal text-white font-bold shadow disabled:opacity-50 flex items-center justify-center gap-2"
                 >
-                  Save &amp; Enroll Worker
+                  {pendingActions['add-employee'] ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Enrolling Worker...</span>
+                    </>
+                  ) : (
+                    <span>Save &amp; Enroll Worker</span>
+                  )}
                 </button>
               </div>
             </form>
@@ -1068,9 +1371,17 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 py-2.5 rounded-xl bg-sbe-royal text-white font-bold shadow"
+                  disabled={!!pendingActions['add-client']}
+                  className="flex-1 py-2.5 rounded-xl bg-sbe-royal text-white font-bold shadow disabled:opacity-50 flex items-center justify-center gap-2"
                 >
-                  Register Client Facility
+                  {pendingActions['add-client'] ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Registering Plant...</span>
+                    </>
+                  ) : (
+                    <span>Register Client Facility</span>
+                  )}
                 </button>
               </div>
             </form>

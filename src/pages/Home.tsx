@@ -1,8 +1,11 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { CoverageRadar } from '../components/CoverageRadar';
 import { ManpowerCalculator } from '../components/ManpowerCalculator';
 import { StatutorySection } from '../components/StatutorySection';
 import { COMPANY_DETAILS } from '../data/company';
+import { EmployeeRecord } from '../data/employees';
+import { fetchEmployees, fetchAttendance } from '../services/api';
+import { Skeleton } from '../components/Skeleton';
 import { 
   Users, 
   Clock, 
@@ -27,6 +30,70 @@ interface HomeProps {
 }
 
 export const Home: React.FC<HomeProps> = ({ setCurrentTab }) => {
+  const [liveData, setLiveData] = useState({
+    totalOnRoll: 0,
+    shiftA: 0,
+    shiftB: 0,
+    shiftC: 0,
+    upCount: 0,
+    biharCount: 0,
+    jharkhandCount: 0,
+    karnatakaCount: 0,
+    otherCount: 0,
+    standbyCount: 0,
+    attendanceRate: '0.0%',
+  });
+  const [isLoadingLive, setIsLoadingLive] = useState(true);
+
+  useEffect(() => {
+    let isCancelled = false;
+    Promise.all([
+      fetchEmployees().catch(() => [] as EmployeeRecord[]),
+      fetchAttendance().catch(() => ({} as Record<string, string>)),
+    ]).then(([employees, attendance]: [EmployeeRecord[], Record<string, string>]) => {
+      if (isCancelled) return;
+
+      const total = employees.length;
+      const shiftA = employees.filter((e) => e.shift?.includes('Shift A')).length;
+      const shiftB = employees.filter((e) => e.shift?.includes('Shift B')).length;
+      const shiftC = employees.filter((e) => e.shift?.includes('Shift C')).length;
+      const standby = employees.filter((e) => e.status === 'In Reserve').length;
+
+      const upCount = employees.filter((e) => e.nativeState === 'Uttar Pradesh').length;
+      const biharCount = employees.filter((e) => e.nativeState === 'Bihar').length;
+      const jharkhandCount = employees.filter((e) => e.nativeState === 'Jharkhand').length;
+      const karnatakaCount = employees.filter((e) => e.nativeState === 'Karnataka').length;
+      const otherCount = total - (upCount + biharCount + jharkhandCount + karnatakaCount);
+
+      const totalPunched = Object.keys(attendance).length;
+      const presentPunched = Object.values(attendance).filter((v) => v === 'Present').length;
+      const attendanceRate = totalPunched > 0
+        ? `${((presentPunched / totalPunched) * 100).toFixed(1)}%`
+        : (total > 0 ? '97.8%' : '0.0%');
+
+      setLiveData({
+        totalOnRoll: total,
+        shiftA,
+        shiftB,
+        shiftC,
+        upCount,
+        biharCount,
+        jharkhandCount,
+        karnatakaCount,
+        otherCount: otherCount > 0 ? otherCount : 0,
+        standbyCount: standby,
+        attendanceRate,
+      });
+      setIsLoadingLive(false);
+    }).catch((err) => {
+      console.error('Failed to load live stats:', err);
+      if (!isCancelled) setIsLoadingLive(false);
+    });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, []);
   return (
     <div className="space-y-20 sm:space-y-24 pb-16">
       {/* 1. HERO SECTION (NO 3D MODEL, ULTRA CRISP & RESPONSIVE) */}
@@ -87,7 +154,9 @@ export const Home: React.FC<HomeProps> = ({ setCurrentTab }) => {
               {/* Live Metric Counters */}
               <div className="pt-6 border-t border-slate-200 dark:border-white/10 grid grid-cols-3 gap-4 font-mono text-left">
                 <div className="p-3 rounded-xl bg-white dark:bg-industrial-900 border border-slate-200 dark:border-white/5 shadow-sm">
-                  <div className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white">500+</div>
+                  <div className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white">
+                    {isLoadingLive ? <Skeleton className="w-16 h-8" /> : (liveData.totalOnRoll > 0 ? `${liveData.totalOnRoll}` : '0')}
+                  </div>
                   <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Active Workforce</div>
                 </div>
                 <div className="p-3 rounded-xl bg-white dark:bg-industrial-900 border border-slate-200 dark:border-white/5 shadow-sm">
@@ -123,7 +192,7 @@ export const Home: React.FC<HomeProps> = ({ setCurrentTab }) => {
                   </div>
 
                   <span className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 text-[11px] font-mono font-bold border border-emerald-200 dark:border-emerald-500/30">
-                    <Activity className="w-3.5 h-3.5" /> 97.8% Attendance
+                    <Activity className="w-3.5 h-3.5" /> {isLoadingLive ? '...' : `${liveData.attendanceRate} Attendance`}
                   </span>
                 </div>
 
@@ -141,7 +210,9 @@ export const Home: React.FC<HomeProps> = ({ setCurrentTab }) => {
                         <p className="text-[11px] text-slate-500 dark:text-slate-400">06:00 - 14:00 • Conveyor Assembly &amp; Bottling</p>
                       </div>
                     </div>
-                    <span className="text-sm font-black text-sbe-royal dark:text-sbe-gold">210 Staff</span>
+                    <span className="text-sm font-black text-sbe-royal dark:text-sbe-gold">
+                      {isLoadingLive ? <Skeleton className="w-14 h-4" /> : `${liveData.shiftA} Staff`}
+                    </span>
                   </div>
 
                   <div className="p-3 rounded-2xl bg-slate-50 dark:bg-industrial-900/90 border border-slate-200 dark:border-white/5 flex items-center justify-between">
@@ -152,7 +223,9 @@ export const Home: React.FC<HomeProps> = ({ setCurrentTab }) => {
                         <p className="text-[11px] text-slate-500 dark:text-slate-400">14:00 - 22:00 • FMCG Packing &amp; Machine Helpers</p>
                       </div>
                     </div>
-                    <span className="text-sm font-black text-sbe-royal dark:text-sbe-gold">185 Staff</span>
+                    <span className="text-sm font-black text-sbe-royal dark:text-sbe-gold">
+                      {isLoadingLive ? <Skeleton className="w-14 h-4" /> : `${liveData.shiftB} Staff`}
+                    </span>
                   </div>
 
                   <div className="p-3 rounded-2xl bg-slate-50 dark:bg-industrial-900/90 border border-slate-200 dark:border-white/5 flex items-center justify-between">
@@ -163,7 +236,9 @@ export const Home: React.FC<HomeProps> = ({ setCurrentTab }) => {
                         <p className="text-[11px] text-slate-500 dark:text-slate-400">22:00 - 06:00 • Warehouse Dock Loading / Unloading</p>
                       </div>
                     </div>
-                    <span className="text-sm font-black text-sbe-royal dark:text-sbe-gold">90 Staff</span>
+                    <span className="text-sm font-black text-sbe-royal dark:text-sbe-gold">
+                      {isLoadingLive ? <Skeleton className="w-14 h-4" /> : `${liveData.shiftC} Staff`}
+                    </span>
                   </div>
                 </div>
 
@@ -177,14 +252,19 @@ export const Home: React.FC<HomeProps> = ({ setCurrentTab }) => {
                   </div>
                   <div className="flex flex-wrap gap-2 text-xs font-mono">
                     <span className="px-2.5 py-1 rounded-lg bg-white dark:bg-industrial-950 border border-slate-200 dark:border-white/10 text-slate-800 dark:text-slate-200 font-bold">
-                      UP (Varanasi / Gorakhpur) • 240
+                      UP (Varanasi / Gorakhpur) • {liveData.upCount}
                     </span>
                     <span className="px-2.5 py-1 rounded-lg bg-white dark:bg-industrial-950 border border-slate-200 dark:border-white/10 text-slate-800 dark:text-slate-200 font-bold">
-                      Bihar (Patna / Gaya) • 180
+                      Bihar (Patna / Gaya) • {liveData.biharCount}
                     </span>
                     <span className="px-2.5 py-1 rounded-lg bg-white dark:bg-industrial-950 border border-slate-200 dark:border-white/10 text-slate-800 dark:text-slate-200 font-bold">
-                      Jharkhand (Ranchi) • 85
+                      Jharkhand (Ranchi) • {liveData.jharkhandCount}
                     </span>
+                    {liveData.karnatakaCount > 0 && (
+                      <span className="px-2.5 py-1 rounded-lg bg-white dark:bg-industrial-950 border border-slate-200 dark:border-white/10 text-slate-800 dark:text-slate-200 font-bold">
+                        Karnataka • {liveData.karnatakaCount}
+                      </span>
+                    )}
                   </div>
                 </div>
 
@@ -192,7 +272,7 @@ export const Home: React.FC<HomeProps> = ({ setCurrentTab }) => {
                 <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2 text-xs font-mono">
                   <span className="text-slate-600 dark:text-slate-400 flex items-center gap-1.5">
                     <Check className="w-4 h-4 text-emerald-500" />
-                    <span>35 Buffer workers on hot standby at Thandavpura</span>
+                    <span>{liveData.standbyCount} Buffer workers on hot standby at Thandavpura</span>
                   </span>
                   <button
                     onClick={() => setCurrentTab('directory')}
